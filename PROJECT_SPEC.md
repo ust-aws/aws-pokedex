@@ -158,7 +158,8 @@ backend/
   drizzle/                       # generated migrations
   scripts/seed-admin.ts          # creates first admin from env/args
   src/
-    app.ts                       # express app, cors, json, routes, listen
+    app.ts                       # express app, cors, json, routes, errors
+    server.ts                    # starts the HTTP listener
     db/schema.ts                 # drizzle tables + enums
     db/index.ts                  # pg pool + drizzle client
     auth.ts                      # scrypt hash/verify, JWT sign/verify, requireAuth, requireAdmin
@@ -225,7 +226,7 @@ Use one region throughout. Use the default VPC.
      [Service]
      WorkingDirectory=/opt/aws-pokedex/backend
      EnvironmentFile=/etc/aws-pokedex.env
-     ExecStart=/usr/bin/node src/app.ts
+     ExecStart=/usr/bin/node src/server.ts
      Restart=always
      User=ec2-user
      AmbientCapabilities=CAP_NET_BIND_SERVICE
