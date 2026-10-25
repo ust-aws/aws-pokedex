@@ -1,9 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
-  bigserial,
   check,
   index,
-  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -19,8 +17,6 @@ export const POKEMON_TYPES = [
 ] as const;
 
 export const userRole = pgEnum('user_role', ['user', 'admin']);
-export const auditAction = pgEnum('audit_action', ['create', 'update', 'delete', 'login']);
-export const auditEntity = pgEnum('audit_entity', ['user', 'pokemon']);
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -65,19 +61,4 @@ export const pokemon = pgTable(
       sql`${t.types} <@ ARRAY[${sql.raw(POKEMON_TYPES.map((type) => `'${type}'`).join(', '))}]::text[]`,
     ),
   ],
-);
-
-export const auditLog = pgTable(
-  'audit_log',
-  {
-    id: bigserial('id', { mode: 'number' }).primaryKey(),
-    actorId: uuid('actor_id').references(() => users.id),
-    action: auditAction('action').notNull(),
-    entity: auditEntity('entity').notNull(),
-    entityId: uuid('entity_id').notNull(),
-    before: jsonb('before'),
-    after: jsonb('after'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [index('audit_log_created_at_idx').on(t.createdAt.desc())],
 );

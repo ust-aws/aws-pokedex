@@ -1,15 +1,15 @@
 # aws-pokedex — Project Spec
 
-The demo application for the S3 / EC2 / RDS lesson. Users upload Pokémon with an image. Admins also manage users and can read an audit log.
+The demo application for the S3 / EC2 / RDS lesson. Users upload Pokémon with an image. Admins also manage users.
 
 ## 1. Overview
 
 ### Roles
 
-| Role | Pokémon | Users | Audit log |
-|---|---|---|---|
-| `user` | Read all. Create. Update and delete **only their own**. | — | — |
-| `admin` | Full CRUD on any Pokémon. | Read, search, update, soft-delete. | Read |
+| Role | Pokémon | Users |
+|---|---|---|
+| `user` | Read all. Create. Update and delete **only their own**. | — |
+| `admin` | Full CRUD on any Pokémon. | Read, search, update, soft-delete. |
 
 ### Pages
 
@@ -17,8 +17,8 @@ The demo application for the S3 / EC2 / RDS lesson. Users upload Pokémon with a
 |---|---|---|
 | `/login` | public | Email + password login |
 | `/register` | public | Self-signup (always creates role `user`) |
-| `/` | logged in | Pokémon grid, search by name, filter by type, paging. Create / edit / delete in modals. Edit and delete show only on rows the user owns, or on every row for admins. |
-| `/admin` | admin | Tab **Users**: list, search, edit (username, email, role, password), delete. Tab **Audit log**: read-only, newest first, filter by entity. |
+| `/` | logged in | Pokémon grid, search by name, filter by type, paging. Clicking a card opens a modal with the image and details. Create / edit / delete in modals. Edit and delete show only on Pokémon the user owns, or on every Pokémon for admins. |
+| `/admin` | admin | User table: list, search, paging, edit (username, email, role, password), delete. |
 
 ## 2. Architecture
 
@@ -49,7 +49,6 @@ Browser ──HTTP──> S3 site bucket (Next.js static export)
 | Ownership | `pokemon.created_by`. A user can change only their own Pokémon. |
 | Database | RDS PostgreSQL 17 + Drizzle ORM + drizzle-kit migrations |
 | Deletes | Soft delete (`deleted_at`) for users and Pokémon. S3 objects are kept. |
-| Audit | Every create, update and delete, plus login. Stores before/after JSON. Admins read it on the admin page. |
 | Search | Server-side `ILIKE` on name + `type` filter, 20 per page |
 | Admin guardrails | An admin cannot delete or demote themselves |
 | Provisioning | Manual AWS console runbook (§8) |
@@ -95,24 +94,6 @@ All tables use `created_at` / `updated_at` (`timestamptz`, default `now()`). Sof
 - Index on `lower(name)`.
 - Canonical types: normal, fire, water, electric, grass, ice, fighting, poison, ground, flying, psychic, bug, rock, ghost, dragon, dark, steel, fairy.
 
-### `audit_log`
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | `bigserial` PK | |
-| `actor_id` | `uuid` FK → `users.id` null | who did it |
-| `action` | enum (`create`, `update`, `delete`, `login`) | |
-| `entity` | enum (`user`, `pokemon`) | |
-| `entity_id` | `uuid` not null | |
-| `before` | `jsonb` null | row before the change |
-| `after` | `jsonb` null | row after the change |
-| `created_at` | `timestamptz` | |
-
-- Append-only. The app never updates or deletes rows here.
-- `password_hash` is **never** copied into `before` / `after`. A password change shows as `"password": "[changed]"`.
-- The audit row is written in the **same transaction** as the change it records.
-- Index on `(created_at DESC)`.
-
 ## 5. API
 
 - Base URL: `http://<ec2-public-dns>` (no path prefix).
@@ -125,7 +106,7 @@ All tables use `created_at` / `updated_at` (`timestamptz`, default `now()`). Sof
 |---|---|---|---|
 | GET | `/health` | public | `{ ok: true }` + DB ping |
 | POST | `/auth/register` | public | `{email, username, password}` (password ≥ 8 chars) → `{token, user}` |
-| POST | `/auth/login` | public | `{email, password}` → `{token, user}`. Writes audit `login`. Wrong credentials → 401 with a generic message. |
+| POST | `/auth/login` | public | `{email, password}` → `{token, user}`. Wrong credentials → 401 with a generic message. |
 | GET | `/auth/me` | auth | current user |
 | GET | `/pokemon?q=&type=&page=` | auth | `q` → `name ILIKE %q%`, `type` → `type = ANY(types)` |
 | GET | `/pokemon/:id` | auth | |
@@ -136,7 +117,6 @@ All tables use `created_at` / `updated_at` (`timestamptz`, default `now()`). Sof
 | GET | `/users?q=&page=` | admin | `q` matches username or email |
 | PATCH | `/users/:id` | admin | `{username?, email?, role?, password?}`. Changing your own role → 403. |
 | DELETE | `/users/:id` | admin | soft delete. Deleting yourself → 403. |
-| GET | `/audit-log?entity=&page=` | admin | newest first, includes actor username |
 
 User objects in responses never contain `password_hash`.
 
@@ -150,6 +130,22 @@ User objects in responses never contain `password_hash`.
 - `frontend/lib/api.ts` is a single `fetch` wrapper. It adds the Bearer token, and on 401 it clears the token and redirects to `/login`.
 - Upload flow: call `POST /uploads/presign`, then POST the file to S3 with the returned `fields`, then save `imageKey` on the Pokémon.
 - Build-time env vars: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_IMAGES_BASE_URL`.
+
+### 6.1 Components (`frontend/components/`)
+
+| Component | Used on | Behaviour |
+|---|---|---|
+| `SearchBar` | `/`, `/admin` | Text input, debounced 300 ms, calls `onSearch(q)`. Resets the page to 1. |
+| `Pagination` | `/`, `/admin` | Prev / Next and "Page x of y", from the API's `{total, page, pageSize}`. Hidden when there is only one page. |
+| `Modal` | all modals | Thin wrapper on the native `<dialog>` (`showModal()`). Esc and a backdrop click close it. |
+| `PokemonCard` | `/` | Grid tile: image (placeholder if none), name, type badges. Click opens `PokemonDetailModal`. |
+| `PokemonDetailModal` | `/` | Large image, name, types, description, creator, dates. Edit and Delete buttons show only for the owner or an admin. |
+| `PokemonFormModal` | `/` | Create and edit: name, 1–2 types, description, image upload (presign → S3 POST → `imageKey`). |
+| `UserTable` | `/admin` | Columns: username, email, role, created. Row actions: Edit (opens `UserFormModal`) and Delete (with confirm). Delete is disabled on your own row. |
+| `UserFormModal` | `/admin` | Username, email, role (disabled for yourself), optional new password. |
+
+- The search text, type filter and page number live in the URL (`?q=&type=&page=`), so refresh and the back button keep the view. With static export, `useSearchParams` needs a `<Suspense>` boundary.
+- Both list pages show 20 items per page.
 
 ## 7. Repo layout (target)
 
@@ -166,18 +162,17 @@ backend/
     db/schema.ts                 # drizzle tables + enums
     db/index.ts                  # pg pool + drizzle client
     auth.ts                      # scrypt hash/verify, JWT sign/verify, requireAuth, requireAdmin
-    audit.ts                     # writeAudit(tx, {actorId, action, entity, entityId, before, after})
     routes/auth.ts
     routes/pokemon.ts
     routes/users.ts
     routes/uploads.ts
-    routes/auditLog.ts
   test/*.test.ts
 frontend/
   app/page.tsx                   # pokemon grid
   app/login/page.tsx
   app/register/page.tsx
   app/admin/page.tsx
+  components/                    # see §6.1
   lib/api.ts
 ```
 
@@ -253,7 +248,7 @@ Use one region throughout. Use the default VPC.
 7. **Smoke test**
    - `curl http://<ec2-dns>/health` returns `{ ok: true }`.
    - Open the site URL, register, create a Pokémon with an image, then search for it.
-   - Log in as the seeded admin. Edit a user and check that the audit log shows it.
+   - Log in as the seeded admin. Open `/admin`, search for the new user and edit their role.
 8. **Teardown** (to stop charges): terminate EC2, delete the RDS instance (skip the final snapshot), empty and delete both buckets, delete the IAM role and both security groups.
 
 ## 9. Testing
@@ -265,14 +260,14 @@ Integration tests with `node:test` + `supertest` run against the docker compose 
 - a user cannot PATCH or DELETE another user's Pokémon (403). An admin can.
 - a soft-deleted Pokémon disappears from the list and from `GET /pokemon/:id` (404)
 - a soft-deleted user cannot log in, and their existing token stops working
-- a non-admin gets 403 on `/users` and `/audit-log`
+- a non-admin gets 403 on `/users`
 - an admin cannot delete or demote themselves (403)
 - duplicate email at register → 409. Re-registering the email of a soft-deleted user succeeds.
-- each write creates exactly one audit row, and no audit row contains `password_hash`
+- no response contains `password_hash`
 - search (`q`, `type`) and paging
 
 The `/uploads/presign` test only checks the response shape. It does not upload to S3.
 
 ## 10. Out of scope
 
-HTTPS / custom domain, CloudFront, refresh tokens, password-reset email, image resizing or thumbnails, deleting S3 objects, infrastructure as code, CI/CD, user profile page, rate limiting.
+HTTPS / custom domain, CloudFront, refresh tokens, password-reset email, image resizing or thumbnails, deleting S3 objects, infrastructure as code, CI/CD for the app (the participant image has its own workflow), audit logging, user profile page, rate limiting.
