@@ -15,6 +15,7 @@ if (new URL(developmentUrl).pathname === testUrl.pathname) {
 
 process.env.DATABASE_URL = testUrl.toString();
 process.env.CORS_ORIGIN = 'http://localhost:3001';
+process.env.JWT_SECRET = 'pokedex-test-secret-for-integration-tests-only';
 
 // Import the application only after selecting the test database.
 export const { db, pool } = await import('../src/db/index.ts');

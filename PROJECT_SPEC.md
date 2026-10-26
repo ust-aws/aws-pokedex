@@ -44,7 +44,7 @@ Browser ──HTTP──> S3 site bucket (Next.js static export)
 |---|---|
 | Frontend hosting | Next.js `output: 'export'` → S3 static website bucket |
 | Images | Separate S3 bucket. The browser uploads through a **presigned POST**. S3 enforces `content-length-range` ≤ 2 MB and content type `image/png`, `image/jpeg` or `image/webp`. Objects are publicly readable. |
-| Auth | Email + password. JWT (HS256, 8 h expiry, no refresh token) sent as `Authorization: Bearer`. The browser keeps it in `localStorage`. |
+| Auth | Email + password. JWT through `jose` (HS256, 8 h expiry, no refresh token) sent as `Authorization: Bearer`. The browser keeps it in `localStorage`. |
 | Signup | Public register creates role `user`. The first admin comes from a seed script. Admins can promote users. |
 | Ownership | `pokemon.created_by`. A user can change only their own Pokémon. |
 | Database | RDS PostgreSQL 17 + Drizzle ORM + drizzle-kit migrations |
@@ -107,7 +107,7 @@ All tables use `created_at` / `updated_at` (`timestamptz`, default `now()`). Sof
 | GET | `/health` | public | `{ ok: true }` + DB ping |
 | POST | `/auth/register` | public | `{email, username, password}` (password ≥ 8 chars) → `{token, user}` |
 | POST | `/auth/login` | public | `{email, password}` → `{token, user}`. Wrong credentials → 401 with a generic message. |
-| GET | `/auth/me` | auth | current user |
+| GET | `/auth/me` | auth | `{user}` with the current user |
 | GET | `/pokemon?q=&type=&page=` | auth | `q` → `name ILIKE %q%`, `type` → `type = ANY(types)` |
 | GET | `/pokemon/:id` | auth | |
 | POST | `/pokemon` | auth | `{name, types, description?, imageKey?}`. `created_by` = caller. |
@@ -119,6 +119,7 @@ All tables use `created_at` / `updated_at` (`timestamptz`, default `now()`). Sof
 | DELETE | `/users/:id` | admin | soft delete. Deleting yourself → 403. |
 
 User objects in responses never contain `password_hash`.
+Public user objects contain only `id`, `email`, `username`, and `role`.
 
 ## 6. Frontend
 
@@ -182,7 +183,7 @@ frontend/
 | Var | Example |
 |---|---|
 | `DATABASE_URL` | `postgres://pokedex:pokedex@localhost:5432/pokedex` |
-| `JWT_SECRET` | long random string |
+| `JWT_SECRET` | random secret with at least 32 UTF-8 bytes |
 | `PORT` | `5000` locally, `80` on EC2 |
 | `CORS_ORIGIN` | `http://localhost:3001` locally, the S3 website URL in AWS |
 | `AWS_REGION` | `ap-southeast-1` |
@@ -192,6 +193,7 @@ frontend/
 
 1. `docker compose up -d`
 2. `cp backend/.env.example backend/.env`
+   Generate `JWT_SECRET` with the command in `backend/README.md` and set it in `backend/.env`.
 3. The developer runs the migrations: `npx -w backend drizzle-kit migrate`
 4. `node backend/scripts/seed-admin.ts admin@example.com <password>`
 5. `npm run dev` (API on :5000, web on :3001)
