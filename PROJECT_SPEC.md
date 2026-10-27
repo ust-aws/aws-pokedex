@@ -138,7 +138,7 @@ Public user objects contain only `id`, `email`, `username`, and `role`.
 |---|---|---|
 | `SearchBar` | `/`, `/admin` | Text input, debounced 300 ms, calls `onSearch(q)`. Resets the page to 1. |
 | `Pagination` | `/`, `/admin` | Prev / Next and "Page x of y", from the API's `{total, page, pageSize}`. Hidden when there is only one page. |
-| `Modal` | all modals | Thin wrapper on the native `<dialog>` (`showModal()`). Esc and a backdrop click close it. |
+| `Modal` | all modals | Controlled shadcn Dialog (Base UI, Maia). Escape and a backdrop click close it. Focus returns to the trigger. |
 | `PokemonCard` | `/` | Grid tile: image (placeholder if none), name, type badges. Click opens `PokemonDetailModal`. |
 | `PokemonDetailModal` | `/` | Large image, name, types, description, creator, dates. Edit and Delete buttons show only for the owner or an admin. |
 | `PokemonFormModal` | `/` | Create and edit: name, 1–2 types, description, image upload (presign → S3 POST → `imageKey`). |
