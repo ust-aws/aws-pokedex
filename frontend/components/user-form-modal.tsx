@@ -17,11 +17,14 @@ type User = {
   createdAt: string;
 };
 
+//Table for editing user details
 export function UserFormModal({ selectedUser }: {
   selectedUser: User;
 }) {
   const [open, setOpen] = useState(false);
   const { user } = useAuth();
+
+  //Checks if current user is the same as user being edited (to prevent role changing)
   const roleLocked = user?.id === selectedUser.id;
 
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +36,7 @@ export function UserFormModal({ selectedUser }: {
   const [role, setRole] = useState<"user" | "admin">(selectedUser.role);
   const [confirm, setConfirm] = useState(false);
 
+  //Resets form values if user exits without saving changes
   const handleCancel = () => {
     setUsername(selectedUser.username);
     setEmail(selectedUser.email);
@@ -42,6 +46,7 @@ export function UserFormModal({ selectedUser }: {
     setOpen(false);
   }
 
+  //Function saving the new edited values
   const handleEditConfirm = async () => {
     setError(null);
     setSaving(true);
@@ -52,6 +57,7 @@ export function UserFormModal({ selectedUser }: {
       setConfirm(false);
       setOpen(false);
     } catch(err) {
+      //Where an API 403 error would go if the user tries to change their role through backend means
       setError(err instanceof ApiError ? err.message : "Could not save changes.");
     } finally {
       setSaving(false);
@@ -60,6 +66,7 @@ export function UserFormModal({ selectedUser }: {
 
   return (
     <>
+      {/* Edit button to open the actual form */}
       <Button variant="outline" size="sm" className="hover:bg-slate-300" onClick={() => setOpen(true)}>
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -77,6 +84,7 @@ export function UserFormModal({ selectedUser }: {
         </svg>
       </Button>
 
+      {/* User Form Modal */}
       <Dialog open={open} onOpenChange={handleCancel}>
         <DialogContent>
           <DialogHeader>
@@ -109,6 +117,9 @@ export function UserFormModal({ selectedUser }: {
 
             <div className="mt-5" />
 
+            {/* Changing of roles is a radio button */}
+            {/* User cannot edit their own role. 
+            Radiogroup functionalities are disabled beforehand to prevent this. */}
             <div className="space-y-2">
               <Label id="edit-role-label">
                 Role 
@@ -154,6 +165,7 @@ export function UserFormModal({ selectedUser }: {
         </DialogContent>
       </Dialog>
 
+      {/* Confirmation dialog to save changes */}
       <Dialog open={confirm} onOpenChange={() => {setConfirm(false); setError(null);}}>
         <DialogContent>
           <DialogHeader>

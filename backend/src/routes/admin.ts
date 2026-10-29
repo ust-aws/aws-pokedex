@@ -6,6 +6,9 @@ import { requireAuth, requireAdmin } from "../auth.ts";
 import { validateQuery } from "../validation.ts";
 import { asc, isNull } from "drizzle-orm";
 
+//Temporary API Route to retrieve list of users for Admin page.
+//Can be modified by backend devs if needed.
+
 export const adminRouter = Router();
 
 adminRouter.get("/admin/users", requireAuth, requireAdmin, async (_req, res) => {

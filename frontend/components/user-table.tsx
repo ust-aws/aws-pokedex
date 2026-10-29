@@ -15,6 +15,7 @@ type User = {
   createdAt: string;
 };
 
+//Table showing the actual list of users
 export function UserTable({ users }: { users: User[] }) {
   return (
     <div className="hidden overflow-x-auto rounded-md border border-slate-300 bg-white min-[1040px]:block">
@@ -75,6 +76,7 @@ export function UserTable({ users }: { users: User[] }) {
   );
 }
 
+//Modal to delete the user
 function DeleteUserModal({selectedUser} : {
   selectedUser: User;
 }) {
@@ -84,6 +86,7 @@ function DeleteUserModal({selectedUser} : {
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  //Actual function for soft deletion
   const handleDelete = async () => {
     setDeleting(true);
     setActionError(null);
@@ -99,10 +102,13 @@ function DeleteUserModal({selectedUser} : {
     }
   }
 
+  //Prevents the user from deleting their own account by not displaying the delete button if
+  //the conditions are right.
   if(selectedUser.id === user?.id) return;
 
   return (
     <div>
+      {/* Actual delete button */}
       <Button variant="outline" size="sm" className="hover:bg-slate-300" onClick={() => setOpen(true)}>
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -122,6 +128,7 @@ function DeleteUserModal({selectedUser} : {
         </svg>
       </Button>
 
+      {/* Confirmation modal for deletion */}
       <Modal
         open={open}
         onOpenChange={() => {setOpen(false); setActionError(null);}}

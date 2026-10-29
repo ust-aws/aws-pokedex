@@ -18,18 +18,22 @@ type User = {
   createdAt: string;
 };
 
+//Maximum number of rows in User Table
 const PAGE_SIZE = 20;
 
+//Shows content of admin page
 function AdminContent() {
   const [users, setUsers] = useState<User[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  //Constants for search bar and pagination
   const router = useRouter();
   const params = useSearchParams();
   const search = params.get("search") ?? ""
 
   const requestedPage = Math.max(1, parseInt(params.get("page") ?? "1", 10) || 1);
 
+  //Updates URL to show user typed in search bar
   const onSearch = (query: string) => {
     const trimmed = query.trim();
     router.replace(trimmed ? `/admin/?search=${encodeURIComponent(trimmed)}` : "/admin/", {
@@ -37,6 +41,7 @@ function AdminContent() {
     });
   }
 
+  //Updates User Table to only display users with a username/email partially in the search bar
   const filtered = useMemo(() => {
     if (!users) return [];
     const q = search.trim().toLowerCase();
@@ -46,6 +51,7 @@ function AdminContent() {
     );
   }, [users, search]);
 
+  //Actual updating of displayed users
   useEffect(() => {
     let cancelled = false;
 
@@ -63,14 +69,17 @@ function AdminContent() {
     };
   }, []);
 
+  //Constants used to calculate number of pages
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const page = Math.min(requestedPage, totalPages);
 
+  //Filters visible users on each page
   const visible = useMemo(
     () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
     [filtered, page],
   );
 
+  //Method for updating page based on pagination/search bar interactions
   const navigate = (next: { search?: string; page?: number }) => {
     const qs = new URLSearchParams();
     const s = (next.search ?? search).trim();
@@ -91,9 +100,12 @@ function AdminContent() {
           <Card>
             <CardHeader>
               <CardTitle className="text-2xl">Administration</CardTitle>
+
+              {/* Search bar using the provided SearchBar component */}
               <SearchBar value={search} onSearch={onSearch}/>
             </CardHeader>
             <CardContent>
+              {/* Only displays User Table if the API returns at least one user and no error occurs */}
               {
                 (error) ? (<p>{error}</p>) : 
                 (!filtered) ? (<p>Loading...</p>) :
@@ -102,6 +114,7 @@ function AdminContent() {
               }
             </CardContent>
 
+            {/* Page buttons using the provided Pagination component */}
             {users && (
               <Pagination
                 total={filtered.length}
@@ -116,6 +129,7 @@ function AdminContent() {
   );
 }
 
+//Wraps the whole content in a Suspense component 
 export default function AdminPage() {
   return (
     <Suspense fallback={null}>
