@@ -107,10 +107,15 @@ function AdminContent() {
             <CardContent>
               {/* Only displays User Table if the API returns at least one user and no error occurs */}
               {
-                (error) ? (<p>{error}</p>) : 
-                (!filtered) ? (<p>Loading...</p>) :
-                (filtered.length === 0) ? (<p>No users found.</p>) :
-                (<UserTable users={visible} />)
+                error ? (
+                  <p role="alert">{error}</p>
+                ) : users === null ? (
+                  <p>Loading...</p>
+                ) : filtered.length === 0 ? (
+                  <p>No users found.</p>
+                ) : (
+                  <UserTable users={visible} />
+                )
               }
             </CardContent>
 

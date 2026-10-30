@@ -17,6 +17,46 @@ type User = {
   createdAt: string;
 };
 
+//Icons for 'show password' button in edit field
+function EyeIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M4 4l16 16" />
+    </svg>
+  );
+}
+
 //Table for editing user details
 export function UserFormModal({ selectedUser }: {
   selectedUser: User;
@@ -29,6 +69,7 @@ export function UserFormModal({ selectedUser }: {
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const [username, setUsername] = useState<string>(selectedUser.username);
   const [email, setEmail] = useState<string>(selectedUser.email);
@@ -46,8 +87,9 @@ export function UserFormModal({ selectedUser }: {
     setOpen(false);
   }
 
-  //Function saving the new edited values
-  const handleEditConfirm = async () => {
+  //Function saving the new edited values (Disabled)
+  //Remove comment tags or create a new function when implementing backend
+  /* const handleEditConfirm = async () => {
     setError(null);
     setSaving(true);
 
@@ -62,7 +104,7 @@ export function UserFormModal({ selectedUser }: {
     } finally {
       setSaving(false);
     }
-  }
+  } */
 
   return (
     <>
@@ -148,12 +190,25 @@ export function UserFormModal({ selectedUser }: {
 
             <div className="space-y-2">
               <Label htmlFor="edit-password">New Password (optional)</Label>
-              <Input
-                  id="edit-password"
-                  placeholder="Enter Password ..."
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-              />
+              <div className="relative">
+                <Input
+                    id="edit-password"
+                    placeholder="Enter Password ..."
+                    value={password}
+                    type={showPassword ? "text" : "password"}
+                    onChange={(event) => setPassword(event.target.value)}
+                />
+                <Button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  title={showPassword ? "Hide password" : "Show password"}
+                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-900 hover:text-slate-700 bg-slate-100 hover:bg-slate-300"
+                >
+                  {showPassword ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+                </Button>
+              </div>
             </div>
 
             <div className="mt-5 flex justify-center gap-3">
@@ -179,7 +234,7 @@ export function UserFormModal({ selectedUser }: {
             )}
 
             <div className="flex justify-center gap-3">
-              <Button className="w-full" onClick={handleEditConfirm} disabled={saving}>
+              <Button className="w-full" onClick={() => {/* Insert Edit Function Here */}} disabled={saving}>
                 {saving ? "Saving..." : "Save"}
               </Button>
             </div>
