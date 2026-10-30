@@ -1,6 +1,6 @@
 FROM ubuntu:24.04
 
-LABEL org.opencontainers.image.source="https://github.com/ust-aws/aws-pokedex-workspace"
+LABEL org.opencontainers.image.source="https://github.com/ust-aws/aws-pokedex"
 LABEL org.opencontainers.image.description="Workspace environment for AWS Pokédex"
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     git \
+    gnupg \
     python3 \
     python3-pip \
     python3-venv \
