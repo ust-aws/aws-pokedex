@@ -65,13 +65,19 @@ Deleted accounts cannot log in. Their email and username can be registered again
 ## Image uploads
 
 `POST /uploads/presign` requires `Authorization: Bearer <token>` and accepts `{contentType}`.
-It returns `{url, fields, key}`. The key has the form `images/<uuid>.<ext>`.
+It returns `{url, fields, key}`. The key has the form `uploads/<userId>/<uuid>.<ext>`.
 Only `image/png`, `image/jpeg`, and `image/webp` are accepted. Other types return 400.
 
 The browser posts the file directly to S3. It sends every entry in `fields` as a form field and then the file as the last field, named `file`.
 The API signs the upload but never receives the image.
 S3 rejects files larger than 2 MB, a different content type, and permits older than five minutes.
-After the upload, the client saves `key` as the Pokémon's `imageKey`.
+Files under `uploads/` are private.
+
+After the upload, the client calls `POST /uploads/confirm` with `{key}`.
+The API reads the file's first 12 bytes and checks that they match the PNG, JPEG, or WebP signature for the key's extension.
+A valid file is copied to `images/<uuid>.<ext>`, which is public, and the response is `{key}` with that new key.
+The client saves the returned key as the Pokémon's `imageKey`.
+A file that fails the check is deleted and returns 400. A key that belongs to another user returns 400. A missing upload returns 404.
 
 The AWS SDK uses the default credential provider chain.
 Locally, it uses your AWS CLI profile. On EC2, it uses the instance role. Do not put AWS keys in `.env`.
@@ -115,12 +121,35 @@ Use the same region as `AWS_REGION`. Replace `<bucket>` with a globally unique n
    aws s3api put-bucket-cors --bucket <bucket> --cors-configuration file://cors.json
    ```
    In the console, paste only the array inside `CORSRules`.
-4. The identity that signs uploads needs `s3:PutObject` on `arn:aws:s3:::<bucket>/images/*`. On EC2, attach this permission to the instance role.
+4. The identity that signs uploads needs the following policy. On EC2, attach it to the instance role.
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Effect": "Allow",
+         "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+         "Resource": "arn:aws:s3:::<bucket>/uploads/*"
+       },
+       {
+         "Effect": "Allow",
+         "Action": "s3:PutObject",
+         "Resource": "arn:aws:s3:::<bucket>/images/*"
+       },
+       {
+         "Effect": "Allow",
+         "Action": "s3:ListBucket",
+         "Resource": "arn:aws:s3:::<bucket>"
+       }
+     ]
+   }
+   ```
+   Without `s3:ListBucket`, S3 returns `AccessDenied` instead of `NoSuchKey` for a missing upload, and `/uploads/confirm` returns 500 instead of 404.
 
 Without the CORS rule, browser uploads fail even though `curl` uploads succeed.
 
 To check the setup, request a permit and post a small image with `curl -F`, sending each entry in `fields` and then `file=@image.png`.
-S3 returns 204 and the image is readable at `https://<bucket>.s3.<region>.amazonaws.com/<key>`.
+S3 returns 204. Then call `/uploads/confirm` with the key. The image is readable at `https://<bucket>.s3.<region>.amazonaws.com/<key>` using the returned key.
 A file over 2 MB returns 400 `EntityTooLarge`.
 
 ## Tests
