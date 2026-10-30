@@ -7,6 +7,10 @@ import { validateBody } from '../validation.ts';
 import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, NoSuchKey, S3Client } from '@aws-sdk/client-s3';
 import { HttpError } from '../errors.ts';
 
+const bucket = process.env.IMAGES_BUCKET;
+if (!bucket) {
+  throw new Error('IMAGES_BUCKET must be set.');
+}
 
 const extensions = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' } as const;
 
@@ -45,7 +49,7 @@ uploadsRouter.post('/presign', requireAuth, async (req, res) => {
   checkPresignLimit(req.user!.id);
   const key = `uploads/${req.user!.id}/${randomUUID()}.${extensions[contentType]}`;
   const { url, fields } = await createPresignedPost(s3, {
-    Bucket: process.env.IMAGES_BUCKET!,
+    Bucket: bucket,
     Key: key,
     Conditions: [
       ['content-length-range', 1, 2 * 1024 * 1024],
@@ -62,7 +66,7 @@ uploadsRouter.post('/confirm', requireAuth, async (req, res) => {
   const match = /^uploads\/([0-9a-f-]{36})\/([0-9a-f-]{36})\.(png|jpg|webp)$/.exec(key);
   if (!match || match[1] !== req.user!.id) throw new HttpError(400, 'Invalid upload key.');
   const [, , id, ext] = match;
-  const Bucket = process.env.IMAGES_BUCKET!;
+  const Bucket = bucket;
 
   let head: Buffer;
   try {
