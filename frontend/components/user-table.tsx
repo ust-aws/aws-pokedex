@@ -172,15 +172,14 @@ function DeleteUserModal({selectedUser} : {
         onOpenChange={() => {setOpen(false); setActionError(null);}}
         title={"Delete user?"}
         description={"You cannot undo this action."}
-        children={(
-          <div className="flex flex-col gap-2">
-            {actionError && <p role="alert" className="mb-2 text-sm text-red-600">{actionError}</p>}
-            <Button className="bg-rose-600 hover:bg-rose-400" onClick={() => { /* Insert Delete Function Here */ }} disabled={deleting}>
-              {deleting ? "Deleting..." : "Confirm"}
-            </Button>
-          </div>
-        )}
-      / >
+      >
+        <div className="flex flex-col gap-2">
+          {actionError && <p role="alert" className="mb-2 text-sm text-red-600">{actionError}</p>}
+          <Button className="bg-rose-600 hover:bg-rose-400" onClick={() => { /* Insert Delete Function Here */ }} disabled={deleting}>
+            {deleting ? "Deleting..." : "Confirm"}
+          </Button>
+        </div>
+      </Modal>
     </div>
   )
 }
