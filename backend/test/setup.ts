@@ -17,6 +17,12 @@ process.env.DATABASE_URL = testUrl.toString();
 process.env.CORS_ORIGIN = 'http://localhost:3001';
 process.env.JWT_SECRET = 'pokedex-test-secret-for-integration-tests-only';
 
+process.env.AWS_REGION = 'ap-southeast-1';
+process.env.IMAGES_BUCKET = 'test-bucket';
+// Signing is local, so fake keys work and the tests never call AWS.
+process.env.AWS_ACCESS_KEY_ID = 'test';
+process.env.AWS_SECRET_ACCESS_KEY = 'test';
+
 // Import the application only after selecting the test database.
 export const { db, pool } = await import('../src/db/index.ts');
 export const { app } = await import('../src/app.ts');
