@@ -14,9 +14,9 @@ export function Pagination({ total, page, pageSize, onPageChange }: {
   return (
     <PaginationRoot>
       <PaginationContent className="gap-4">
-        <PaginationItem><Button variant="outline" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>Previous</Button></PaginationItem>
+        <PaginationItem><Button variant="outline" aria-label="Previous" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>{"<"}</Button></PaginationItem>
         <PaginationItem><span aria-live="polite" className="text-sm">Page {page} of {pages}</span></PaginationItem>
-        <PaginationItem><Button variant="outline" disabled={page >= pages} onClick={() => onPageChange(page + 1)}>Next</Button></PaginationItem>
+        <PaginationItem><Button variant="outline" aria-label="Next" disabled={page >= pages} onClick={() => onPageChange(page + 1)}>{">"}</Button></PaginationItem>
       </PaginationContent>
     </PaginationRoot>
   );

@@ -4,12 +4,15 @@ import { sql } from 'drizzle-orm';
 import { db } from './db/index.ts';
 import { HttpError } from './errors.ts';
 import { authRouter } from './routes/auth.ts';
+import { adminRouter } from "./routes/admin.ts";
 
 export const app = express();
 
 app.use(cors({ origin: process.env.CORS_ORIGIN ?? false }));
 app.use(express.json());
 app.use('/auth', authRouter);
+
+app.use(adminRouter);
 
 app.get('/health', async (_req, res) => {
   await db.execute(sql`select 1`);
