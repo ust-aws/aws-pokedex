@@ -79,6 +79,10 @@ A valid file is copied to `images/<uuid>.<ext>`, which is public, and the respon
 The client saves the returned key as the Pokémon's `imageKey`.
 A file that fails the check is deleted and returns 400. A key that belongs to another user returns 400. A missing upload returns 404.
 
+Each user can request 20 upload permits per hour. Further requests return 429.
+The counter is in memory, so it resets when the API restarts.
+Unconfirmed uploads are deleted by the bucket's lifecycle rule (see step 5 below).
+
 The AWS SDK uses the default credential provider chain.
 Locally, it uses your AWS CLI profile. On EC2, it uses the instance role. Do not put AWS keys in `.env`.
 Set `AWS_REGION` and `IMAGES_BUCKET` in `backend/.env`.
@@ -145,6 +149,24 @@ Use the same region as `AWS_REGION`. Replace `<bucket>` with a globally unique n
    }
    ```
    Without `s3:ListBucket`, S3 returns `AccessDenied` instead of `NoSuchKey` for a missing upload, and `/uploads/confirm` returns 500 instead of 404.
+5. Delete unconfirmed uploads automatically. Save this as `lifecycle.json`:
+   ```json
+   {
+     "Rules": [{
+       "ID": "expire-unconfirmed-uploads",
+       "Filter": { "Prefix": "uploads/" },
+       "Status": "Enabled",
+       "Expiration": { "Days": 1 }
+     }]
+   }
+   ```
+   ```sh
+   aws s3api put-bucket-lifecycle-configuration --bucket <bucket> --lifecycle-configuration file://lifecycle.json
+   ```
+   The rule deletes anything under `uploads/` one day after it was uploaded. This covers files that were uploaded but never confirmed.
+   Confirmed images under `images/` are not affected.
+   S3 runs lifecycle rules once a day, so a file can remain for up to about 48 hours.
+   This command replaces any existing lifecycle rules on the bucket.
 
 Without the CORS rule, browser uploads fail even though `curl` uploads succeed.
 

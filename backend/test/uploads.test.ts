@@ -86,3 +86,14 @@ test('presign returns a POST policy limited to the key, type, and 2 MB', async (
   const expiresIn = Date.parse(policy.expiration) - Date.now();
   assert.ok(expiresIn > 0 && expiresIn <= 5 * 60 * 1000);
 });
+
+test('presign allows 20 permits per user per hour, then returns 429', async () => {
+  const auth = `Bearer ${await token()}`;
+  for (let i = 0; i < 20; i++) {
+    await request(app).post('/uploads/presign').set('Authorization', auth)
+      .send({ contentType: 'image/png' }).expect(200);
+  }
+  await request(app).post('/uploads/presign').set('Authorization', auth)
+    .send({ contentType: 'image/png' }).expect(429);
+});
+

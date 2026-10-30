@@ -18,6 +18,19 @@ const signatures: Record<string, (head: Buffer) => boolean> = {
 };
 const confirmSchema = z.object({ key: z.string() });
 
+// In-memory, per process. Resets on restart and isn't shared across instances; move to a DB table if the API ever runs on more than one instance.
+const presignLimit = 20;
+const presignWindowMs = 60 * 60 * 1000;
+const presignTimes = new Map<string, number[]>();
+
+function checkPresignLimit(userId: string) {
+  const now = Date.now();
+  const recent = (presignTimes.get(userId) ?? []).filter((t) => now - t < presignWindowMs);
+  if (recent.length >= presignLimit) throw new HttpError(429, 'Upload limit reached. Try again later.');
+  recent.push(now);
+  presignTimes.set(userId, recent);
+}
+
 const presignSchema = z.object({
   contentType: z.enum(Object.keys(extensions) as [keyof typeof extensions]),
 });
@@ -29,6 +42,7 @@ export const uploadsRouter = Router();
 
 uploadsRouter.post('/presign', requireAuth, async (req, res) => {
   const { contentType } = validateBody(presignSchema, req);
+  checkPresignLimit(req.user!.id);
   const key = `uploads/${req.user!.id}/${randomUUID()}.${extensions[contentType]}`;
   const { url, fields } = await createPresignedPost(s3, {
     Bucket: process.env.IMAGES_BUCKET!,
