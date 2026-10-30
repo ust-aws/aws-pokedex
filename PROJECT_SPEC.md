@@ -26,14 +26,14 @@ The demo application for the S3 / EC2 / RDS lesson. Users upload Pokémon with a
 Browser ──HTTP──> S3 site bucket (Next.js static export)
    │
    ├──HTTP + Bearer JWT──> EC2 (Express API, systemd, port 80) ──> RDS Postgres (private)
-   │                              └─ IAM instance role → signs presigned POST
+   │                              └─ IAM instance role → signs presigned POST, checks and publishes uploads
    │
-   └──presigned POST──> S3 images bucket (public GET on images/*)
+   └──presigned POST──> S3 images bucket (private uploads/*, public GET on images/*)
 ```
 
 - Only S3, EC2 and RDS are used, plus an IAM role and security groups.
 - The frontend is static files. All logic and every permission check live in the API.
-- The browser uploads images straight to S3. EC2 only signs the upload. It never handles the image bytes.
+- The browser uploads images straight to S3. EC2 signs the upload and reads only the first 12 bytes to check the file type. It never handles the whole image.
 
 > [!WARNING]
 > **Demo only.** The app uses plain HTTP, no domain and no CloudFront. The JWT and the passwords travel in clear text. Do not reuse real passwords. To harden it, put CloudFront (HTTPS) in front of both origins.
@@ -43,7 +43,7 @@ Browser ──HTTP──> S3 site bucket (Next.js static export)
 | Topic | Decision |
 |---|---|
 | Frontend hosting | Next.js `output: 'export'` → S3 static website bucket |
-| Images | Separate S3 bucket. The browser uploads through a **presigned POST**. S3 enforces `content-length-range` ≤ 2 MB and content type `image/png`, `image/jpeg` or `image/webp`. Objects are publicly readable. |
+| Images | Separate S3 bucket. The browser uploads through a **presigned POST**. S3 enforces `content-length-range` ≤ 2 MB and content type `image/png`, `image/jpeg` or `image/webp`. Uploads land in private `uploads/`. The API checks the file's start bytes before it copies the file to public `images/`. Each user can request 20 permits per hour. A lifecycle rule deletes anything in `uploads/` after one day. |
 | Auth | Email + password. JWT through `jose` (HS256, 8 h expiry, no refresh token) sent as `Authorization: Bearer`. The browser keeps it in `localStorage`. |
 | Signup | Public register creates role `user`. The first admin comes from a seed script. Admins can promote users. |
 | Ownership | `pokemon.created_by`. A user can change only their own Pokémon. |
@@ -113,7 +113,8 @@ All tables use `created_at` / `updated_at` (`timestamptz`, default `now()`). Sof
 | POST | `/pokemon` | auth | `{name, types, description?, imageKey?}`. `created_by` = caller. |
 | PATCH | `/pokemon/:id` | owner or admin | partial update |
 | DELETE | `/pokemon/:id` | owner or admin | soft delete |
-| POST | `/uploads/presign` | auth | `{contentType}` → `{url, fields, key}`. Key = `images/<uuid>.<ext>`. Expires in 5 min. |
+| POST | `/uploads/presign` | auth | `{contentType}` → `{url, fields, key}`. Key = `uploads/<userId>/<uuid>.<ext>`. Expires in 5 min. 20 per user per hour, then 429. |
+| POST | `/uploads/confirm` | auth, key owner | `{key}` → `{key}` with key = `images/<uuid>.<ext>`. 400 if the file isn't a valid image (the upload is deleted). 404 if the upload is missing. |
 | GET | `/users?q=&page=` | admin | `q` matches username or email |
 | PATCH | `/users/:id` | admin | `{username?, email?, role?, password?}`. Changing your own role → 403. |
 | DELETE | `/users/:id` | admin | soft delete. Deleting yourself → 403. |
@@ -129,7 +130,7 @@ Public user objects contain only `id`, `email`, `username`, and `role`.
   - Create and edit happen in modals on `/`. There is no `/pokemon/[id]` route.
   - Route guards run client-side: redirect to `/login` if there is no token, and to `/` if a non-admin opens `/admin`. This is UX only. The API is the real enforcement.
 - `frontend/lib/api.ts` is a single `fetch` wrapper. It adds the Bearer token, and on 401 it clears the token and redirects to `/login`.
-- Upload flow: call `POST /uploads/presign`, then POST the file to S3 with the returned `fields`, then save `imageKey` on the Pokémon.
+- Upload flow: call `POST /uploads/presign`, then POST the file to S3 with the returned `fields`, then call `POST /uploads/confirm` with the key, then save the returned key as `imageKey` on the Pokémon.
 - Build-time env vars: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_IMAGES_BASE_URL`.
 
 ### 6.1 Components (`frontend/components/`)
@@ -212,8 +213,9 @@ Use one region throughout. Use the default VPC.
    - Turn off *Block all public access*. This is needed for the bucket policy.
    - Bucket policy: `s3:GetObject` for `"Principal": "*"` on `arn:aws:s3:::<bucket>/images/*`.
    - CORS: allow `POST` from the S3 site origin (and `http://localhost:3001` for dev).
+   - Lifecycle rule `expire-unconfirmed-uploads`: expire objects under `uploads/` after 1 day.
 4. **IAM role** `pokedex-ec2` (trusted entity: EC2)
-   - Inline policy: `s3:PutObject` on `arn:aws:s3:::<images-bucket>/images/*`.
+   - Inline policy: `s3:PutObject`, `s3:GetObject` and `s3:DeleteObject` on `arn:aws:s3:::<images-bucket>/uploads/*`, `s3:PutObject` on `arn:aws:s3:::<images-bucket>/images/*`, and `s3:ListBucket` on `arn:aws:s3:::<images-bucket>` (without it, a missing upload returns `AccessDenied` instead of `NoSuchKey`).
 5. **EC2**: Amazon Linux 2023, `t3.micro`, security group `sg-api`, IAM instance profile `pokedex-ec2`, key pair for SSH.
    - `sudo dnf install -y git nodejs24` (or install with nvm if that package is not available)
    - `git clone <repo> /opt/aws-pokedex && cd /opt/aws-pokedex && npm ci -w backend`
@@ -269,7 +271,8 @@ Integration tests with `node:test` + `supertest` run against the docker compose 
 - no response contains `password_hash`
 - search (`q`, `type`) and paging
 
-The `/uploads/presign` test only checks the response shape. It does not upload to S3.
+The `/uploads/presign` tests check the response shape and the 20-per-hour limit. They do not upload to S3.
+The `/uploads/confirm` tests replace `s3.send` with a fake, so they never call AWS.
 
 ## 10. Out of scope
 
