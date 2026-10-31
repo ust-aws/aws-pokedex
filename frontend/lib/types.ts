@@ -25,3 +25,27 @@ export interface PaginatedResponse<T> {
   page: number;
   pageSize: number;
 }
+
+export const POKEMON_TYPES = [
+  "normal", "fire", "water", "electric", "grass", "ice", "fighting", "poison", "ground", "flying", "psychic", "bug", "rock", "ghost", "dragon", "dark", "steel", "fairy",
+] as const;
+
+export type PokemonType = (typeof POKEMON_TYPES)[number];
+
+export interface Pokemon {
+  id: string;
+  name: string;
+  types: PokemonType[];
+  description: string | null;
+  imageKey: string | null;
+  createdBy: string;
+  creator?: { username: string } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PresignResponse {
+  url: string;
+  fields: Record<string, string>;
+  key: string;
+}
