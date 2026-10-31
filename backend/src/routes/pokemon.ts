@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { and, eq, getTableColumns, isNull } from 'drizzle-orm';
+import { and, asc, count, eq, getTableColumns, ilike, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { requireAuth } from '../auth.ts';
 import { db } from '../db/index.ts';
 import { pokemon, POKEMON_TYPES, users } from '../db/schema.ts';
 import { HttpError } from '../errors.ts';
-import { validateBody } from '../validation.ts';
+import { validateBody, validateQuery } from '../validation.ts';
 
 const createPokemonSchema = z.object({
   name: z.string().trim().min(1),
@@ -17,6 +17,13 @@ const updatePokemonSchema = createPokemonSchema.partial().refine(
   (input) => Object.keys(input).length > 0,
   { message: 'At least one field is required.' },
 );
+const PAGE_SIZE = 20;
+const listPokemonSchema = z.object({
+  q: z.string().trim().default(''),
+  type: z.union([z.enum(POKEMON_TYPES), z.literal('')]).default(''),
+  page: z.string().regex(/^[1-9]\d*$/).default('1').transform(Number)
+    .refine((value) => Number.isSafeInteger(value * PAGE_SIZE), 'Page is too large.'),
+});
 
 function parsePokemonId(value: unknown): string {
   const id = z.uuid().safeParse(value);
@@ -32,6 +39,23 @@ async function throwMissingOrForbidden(id: string): Promise<never> {
 }
 
 export const pokemonRouter = Router();
+
+pokemonRouter.get('/', requireAuth, async (req, res) => {
+  const { q, type, page } = validateQuery(listPokemonSchema, req);
+  const filter = and(
+    isNull(pokemon.deletedAt),
+    q ? ilike(pokemon.name, `%${q}%`) : undefined,
+    type ? sql`${type} = ANY(${pokemon.types})` : undefined,
+  );
+  const [items, [{ total }]] = await Promise.all([
+    db.select({ ...getTableColumns(pokemon), creatorUsername: users.username })
+      .from(pokemon).innerJoin(users, eq(pokemon.createdBy, users.id))
+      .where(filter).orderBy(asc(pokemon.createdAt), asc(pokemon.id))
+      .limit(PAGE_SIZE).offset((page - 1) * PAGE_SIZE),
+    db.select({ total: count() }).from(pokemon).where(filter),
+  ]);
+  res.json({ items, total, page, pageSize: PAGE_SIZE });
+});
 
 pokemonRouter.post('/', requireAuth, async (req, res) => {
   const input = validateBody(createPokemonSchema, req);

@@ -138,3 +138,72 @@ test('updates validate partial input and mutations require authentication', asyn
   const unchanged = await request(app).get(path).auth(token, { type: 'bearer' }).expect(200);
   assert.equal(unchanged.body.name, 'Pikachu');
 });
+
+test('list searches by name, filters either type, and excludes soft-deleted Pokémon', async () => {
+  const owner = await register();
+  const records = await db.insert(pokemon).values([
+    { name: 'Pikachu', types: ['electric'], createdBy: owner.user.id },
+    { name: 'Pika Flyer', types: ['electric', 'flying'], createdBy: owner.user.id },
+    { name: 'Pika Flame', types: ['fire'], createdBy: owner.user.id },
+    { name: 'Charizard', types: ['fire', 'flying'], createdBy: owner.user.id },
+  ]).returning();
+
+  await request(app).get('/pokemon').expect(401);
+  const search = await request(app).get('/pokemon').query({ q: 'pIkA' })
+    .auth(owner.token, { type: 'bearer' }).expect(200);
+  assert.equal(search.body.total, 3);
+  assert.deepEqual(new Set(search.body.items.map((item: { name: string }) => item.name)),
+    new Set(['Pikachu', 'Pika Flyer', 'Pika Flame']));
+  assert.equal(search.body.items[0].creatorUsername, 'Trainer');
+
+  const combined = await request(app).get('/pokemon').query({ q: 'pika', type: 'flying' })
+    .auth(owner.token, { type: 'bearer' }).expect(200);
+  assert.equal(combined.body.total, 1);
+  assert.equal(combined.body.items[0].name, 'Pika Flyer');
+  const flying = await request(app).get('/pokemon').query({ type: 'flying' })
+    .auth(owner.token, { type: 'bearer' }).expect(200);
+  assert.equal(flying.body.total, 2);
+
+  await request(app).delete(`/pokemon/${records[1].id}`).auth(owner.token, { type: 'bearer' }).expect(204);
+  const afterDelete = await request(app).get('/pokemon').query({ q: 'pika', type: 'flying' })
+    .auth(owner.token, { type: 'bearer' }).expect(200);
+  assert.equal(afterDelete.body.total, 0);
+  assert.deepEqual(afterDelete.body.items, []);
+  const all = await request(app).get('/pokemon?q=&type=')
+    .auth(owner.token, { type: 'bearer' }).expect(200);
+  assert.equal(all.body.total, 3);
+  assert.ok(all.body.items.every((item: { id: string }) => item.id !== records[1].id));
+});
+
+test('list paginates matching results with a stable order and validates queries', async () => {
+  const { token, user } = await register();
+  await db.insert(pokemon).values(Array.from({ length: 22 }, (_, i) => ({
+    name: `Pika ${String(i).padStart(2, '0')}`,
+    types: ['electric'],
+    createdBy: user.id,
+  })));
+  await db.insert(pokemon).values({ name: 'Pika fire', types: ['fire'], createdBy: user.id });
+  const getPage = (page: number) => request(app).get('/pokemon')
+    .query({ q: 'PIKA', type: 'electric', page }).auth(token, { type: 'bearer' }).expect(200);
+  const first = await getPage(1);
+  const second = await getPage(2);
+  const beyond = await getPage(3);
+  assert.equal(first.body.total, 22);
+  assert.equal(first.body.page, 1);
+  assert.equal(first.body.pageSize, 20);
+  assert.equal(first.body.items.length, 20);
+  assert.equal(second.body.total, 22);
+  assert.equal(second.body.page, 2);
+  assert.equal(second.body.items.length, 2);
+  assert.equal(new Set([...first.body.items, ...second.body.items].map((item: { id: string }) => item.id)).size, 22);
+  assert.equal(beyond.body.total, 22);
+  assert.deepEqual(beyond.body.items, []);
+  const repeated = await getPage(1);
+  assert.deepEqual(first.body.items.map((item: { id: string }) => item.id),
+    repeated.body.items.map((item: { id: string }) => item.id));
+
+  for (const query of ['page=0', 'page=-1', 'page=1.5', 'page=abc', 'page=1&page=2',
+    'page=999999999999999999999', 'type=unknown']) {
+    await request(app).get(`/pokemon?${query}`).auth(token, { type: 'bearer' }).expect(400);
+  }
+});
