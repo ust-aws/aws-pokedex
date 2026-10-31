@@ -24,8 +24,8 @@ const updateSchema = z.object({
 
 function parseId(value: string): string {
   const result = idSchema.safeParse(value);
-  if (!result.success) throw new HttpError(404, 'User not found.');
-  return result.data;
+  if (!result.success) throw new HttpError(400, 'Invalid user ID.');
+  return result.data.toLowerCase();
 }
 
 export const usersRouter = Router();
@@ -74,7 +74,8 @@ usersRouter.delete('/:id', async (req, res) => {
   const id = parseId(req.params.id);
   if (id === req.user!.id) throw new HttpError(403, 'You cannot delete yourself.');
 
-  const [deleted] = await db.update(users).set({ deletedAt: new Date() })
+  const now = new Date();
+  const [deleted] = await db.update(users).set({ deletedAt: now, updatedAt: now })
     .where(and(eq(users.id, id), isNull(users.deletedAt)))
     .returning({ id: users.id });
   if (!deleted) throw new HttpError(404, 'User not found.');

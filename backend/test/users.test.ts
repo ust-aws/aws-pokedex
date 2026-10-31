@@ -47,6 +47,12 @@ test('an admin cannot change their own role or delete themselves', async () => {
   const remove = await request(app).delete(`/users/${admin.id}`).set('Authorization', admin.auth);
   assert.equal(remove.status, 403);
 
+  const upperId = admin.id.toUpperCase();
+  const demoteUpper = await request(app).patch(`/users/${upperId}`).set('Authorization', admin.auth).send({ role: 'user' });
+  assert.equal(demoteUpper.status, 403);
+  const removeUpper = await request(app).delete(`/users/${upperId}`).set('Authorization', admin.auth);
+  assert.equal(removeUpper.status, 403);
+
   const [row] = await db.select().from(users).where(eq(users.id, admin.id));
   assert.equal(row.role, 'admin');
   assert.equal(row.deletedAt, null);
@@ -113,7 +119,7 @@ test('patch updates fields, hashes the password, and rejects duplicates', async 
   const missing = await request(app).patch('/users/00000000-0000-4000-8000-000000000000').set('Authorization', admin.auth).send({ username: 'Nobody' });
   assert.equal(missing.status, 404);
   const badId = await request(app).patch('/users/not-a-uuid').set('Authorization', admin.auth).send({ username: 'Nobody' });
-  assert.equal(badId.status, 404);
+  assert.equal(badId.status, 400);
 });
 
 test('a soft-deleted user disappears from the list and their token stops working', async () => {
@@ -129,6 +135,7 @@ test('a soft-deleted user disappears from the list and their token stops working
 
   const [row] = await db.select().from(users).where(eq(users.id, target.id));
   assert.notEqual(row.deletedAt, null);
+  assert.deepEqual(row.updatedAt, row.deletedAt);
   assert.equal((await request(app).get('/auth/me').set('Authorization', target.auth)).status, 401);
 
   assert.equal((await request(app).delete(`/users/${target.id}`).set('Authorization', admin.auth)).status, 404);
