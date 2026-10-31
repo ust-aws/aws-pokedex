@@ -26,26 +26,16 @@ export interface PaginatedResponse<T> {
   pageSize: number;
 }
 
-export const POKEMON_TYPES = [
-  "normal", "fire", "water", "electric", "grass", "ice", "fighting", "poison", "ground", "flying", "psychic", "bug", "rock", "ghost", "dragon", "dark", "steel", "fairy",
-] as const;
-
-export type PokemonType = (typeof POKEMON_TYPES)[number];
-
-export interface Pokemon {
+export type Pokemon = {
   id: string;
   name: string;
-  types: PokemonType[];
-  description: string | null;
-  imageKey: string | null;
-  createdBy: string;
-  creator?: { username: string } | null;
-  createdAt: string;
-  updatedAt: string;
-}
+  types: string[];
+  classification: string;
+  description: string;
+  image: string;
+  ownerId: string;
+};
 
-export interface PresignResponse {
-  url: string;
-  fields: Record<string, string>;
-  key: string;
-}
+export type FilterMode = "ALL" | "TYPES" | "CLASSIFICATION";
+export type PokemonInput = Omit<Pokemon, "id" | "ownerId">;
+export const normalizeUser = (name: string) => name.trim().toLowerCase();
