@@ -128,3 +128,14 @@
     @apply font-sans;
   }
 }
+@theme inline {
+  --font-display: var(--font-oswald), ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  font-size: 18px;
+}
+body {
+  background: #ffffff;
+  color: #111111;
+}
