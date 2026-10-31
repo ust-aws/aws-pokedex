@@ -1,22 +1,44 @@
 import { Router } from 'express';
 import { and, asc, count, eq, getTableColumns, ilike, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { HeadObjectCommand } from '@aws-sdk/client-s3';
 import { requireAuth } from '../auth.ts';
 import { db } from '../db/index.ts';
 import { pokemon, POKEMON_TYPES, users } from '../db/schema.ts';
 import { HttpError } from '../errors.ts';
 import { validateBody, validateQuery } from '../validation.ts';
+import { s3 } from './uploads.ts';
 
 const createPokemonSchema = z.object({
   name: z.string().trim().min(1),
-  types: z.array(z.enum(POKEMON_TYPES)).min(1).max(2),
+  types: z.array(z.enum(POKEMON_TYPES)).min(1).max(2)
+    .refine((types) => new Set(types).size === types.length, 'Types must be distinct.'),
   description: z.string().max(500).optional(),
   imageKey: z.string().optional(),
 });
-const updatePokemonSchema = createPokemonSchema.partial().refine(
+const updatePokemonSchema = createPokemonSchema.partial().extend({
+  description: z.string().max(500).nullable().optional(),
+  imageKey: z.string().nullable().optional(),
+}).refine(
   (input) => Object.keys(input).length > 0,
   { message: 'At least one field is required.' },
 );
+
+async function validateImageKey(key: string | null | undefined) {
+  if (key == null) return;
+  if (!/^images\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg|webp)$/.test(key)) {
+    throw new HttpError(400, 'Invalid confirmed image key.');
+  }
+  try {
+    await s3.send(new HeadObjectCommand({ Bucket: process.env.IMAGES_BUCKET, Key: key }));
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && '$metadata' in error &&
+        (error.$metadata as { httpStatusCode?: number })?.httpStatusCode === 404) {
+      throw new HttpError(400, 'Confirmed image not found.');
+    }
+    throw error;
+  }
+}
 const PAGE_SIZE = 20;
 const listPokemonSchema = z.object({
   q: z.string().trim().default(''),
@@ -44,7 +66,7 @@ pokemonRouter.get('/', requireAuth, async (req, res) => {
   const { q, type, page } = validateQuery(listPokemonSchema, req);
   const filter = and(
     isNull(pokemon.deletedAt),
-    q ? ilike(pokemon.name, `%${q}%`) : undefined,
+    q ? ilike(pokemon.name, `%${q.replace(/[\\%_]/g, '\\$&')}%`) : undefined,
     type ? sql`${type} = ANY(${pokemon.types})` : undefined,
   );
   const [items, [{ total }]] = await Promise.all([
@@ -59,6 +81,7 @@ pokemonRouter.get('/', requireAuth, async (req, res) => {
 
 pokemonRouter.post('/', requireAuth, async (req, res) => {
   const input = validateBody(createPokemonSchema, req);
+  await validateImageKey(input.imageKey);
   const [created] = await db.insert(pokemon).values({
     ...input,
     createdBy: req.user!.id,
@@ -83,6 +106,7 @@ pokemonRouter.get('/:id', requireAuth, async (req, res) => {
 pokemonRouter.patch('/:id', requireAuth, async (req, res) => {
   const id = parsePokemonId(req.params.id);
   const input = validateBody(updatePokemonSchema, req);
+  await validateImageKey(input.imageKey);
   const [updated] = await db.update(pokemon).set({ ...input, updatedAt: new Date() })
     .where(and(
       eq(pokemon.id, id),

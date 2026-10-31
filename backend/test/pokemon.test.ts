@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
+import { HeadObjectCommand } from '@aws-sdk/client-s3';
 import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { pokemon, users } from '../src/db/schema.ts';
 import { seedAdmin } from '../scripts/seed-admin.ts';
 import { app, db } from './setup.ts';
+import { s3 } from '../src/routes/uploads.ts';
 
 async function register() {
   const response = await request(app).post('/auth/register').send({
@@ -14,18 +16,24 @@ async function register() {
   return response.body as { token: string; user: { id: string; username: string } };
 }
 
-test('an authenticated user creates a Pokémon and reads its creator username', async () => {
+test('an authenticated user creates a Pokémon and reads its creator username', async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(s3, 'send', (async (command: unknown) => {
+    assert.ok(command instanceof HeadObjectCommand);
+    return {};
+  }) as never);
+  const imageKey = `images/${randomUUID()}.png`;
   const { token, user } = await register();
   const created = await request(app).post('/pokemon').auth(token, { type: 'bearer' }).send({
     name: ' Pikachu ', types: ['electric'], description: 'An electric Pokémon',
-    imageKey: 'images/pikachu.png', createdBy: randomUUID(),
+    imageKey, createdBy: randomUUID(),
   }).expect(201);
 
   assert.equal(created.body.name, 'Pikachu');
   assert.deepEqual(created.body.types, ['electric']);
   assert.equal(created.body.createdBy, user.id);
   assert.equal(created.body.description, 'An electric Pokémon');
-  assert.equal(created.body.imageKey, 'images/pikachu.png');
+  assert.equal(created.body.imageKey, imageKey);
 
   const detail = await request(app).get(`/pokemon/${created.body.id}`)
     .auth(token, { type: 'bearer' }).expect(200);
@@ -49,6 +57,7 @@ test('creation validates required fields, types, and description length', async 
     {}, { name: ' ', types: ['electric'] }, { name: 'Pikachu', types: [] },
     { name: 'Pikachu', types: ['electric', 'fire', 'water'] },
     { name: 'Pikachu', types: ['unknown'] },
+    { name: 'Pikachu', types: ['fire', 'fire'] },
     { name: 'Pikachu', types: ['electric'], description: 'x'.repeat(501) },
     { name: 'Pikachu', types: ['electric'], imageKey: 42 },
   ];
@@ -125,7 +134,7 @@ test('updates validate partial input and mutations require authentication', asyn
   await request(app).delete(path).expect(401);
   for (const body of [
     {}, { name: ' ' }, { types: [] }, { types: ['fire', 'water', 'grass'] },
-    { types: ['unknown'] }, { description: 'x'.repeat(501) }, { createdBy: randomUUID() },
+    { types: ['unknown'] }, { types: ['fire', 'fire'] }, { description: 'x'.repeat(501) }, { createdBy: randomUUID() },
   ]) {
     await request(app).patch(path).auth(token, { type: 'bearer' }).send(body).expect(400);
   }
@@ -137,6 +146,41 @@ test('updates validate partial input and mutations require authentication', asyn
   await request(app).delete(missing).auth(token, { type: 'bearer' }).expect(404);
   const unchanged = await request(app).get(path).auth(token, { type: 'bearer' }).expect(200);
   assert.equal(unchanged.body.name, 'Pikachu');
+});
+
+test('image keys must identify existing confirmed images and nullable fields can be cleared', async (t) => {
+  t.after(() => mock.restoreAll());
+  const key = `images/${randomUUID()}.png`;
+  mock.method(s3, 'send', (async (command: unknown) => {
+    assert.ok(command instanceof HeadObjectCommand);
+    if (command.input.Key !== key) throw { $metadata: { httpStatusCode: 404 } };
+    return {};
+  }) as never);
+  const { token } = await register();
+  const auth = { type: 'bearer' as const };
+  for (const imageKey of ['uploads/unconfirmed.png', `images/${randomUUID()}.png`]) {
+    await request(app).post('/pokemon').auth(token, auth)
+      .send({ name: 'Pikachu', types: ['electric'], imageKey }).expect(400);
+  }
+  const created = await request(app).post('/pokemon').auth(token, auth)
+    .send({ name: 'Pikachu', types: ['electric'], imageKey: key, description: 'Hello' }).expect(201);
+  const path = `/pokemon/${created.body.id}`;
+  await request(app).patch(path).auth(token, auth).send({ imageKey: `images/${randomUUID()}.png` }).expect(400);
+  const cleared = await request(app).patch(path).auth(token, auth)
+    .send({ imageKey: null, description: null }).expect(200);
+  assert.equal(cleared.body.imageKey, null);
+  assert.equal(cleared.body.description, null);
+});
+
+test('search treats wildcard and escape characters literally', async () => {
+  const { token, user } = await register();
+  await db.insert(pokemon).values(['100% real', 'under_score', 'back\\slash', 'ordinary'].map((name) => ({
+    name, types: ['normal'], createdBy: user.id,
+  })));
+  for (const [q, name] of [['%', '100% real'], ['_', 'under_score'], ['\\', 'back\\slash']]) {
+    const result = await request(app).get('/pokemon').query({ q }).auth(token, { type: 'bearer' }).expect(200);
+    assert.deepEqual(result.body.items.map((item: { name: string }) => item.name), [name]);
+  }
 });
 
 test('list searches by name, filters either type, and excludes soft-deleted Pokémon', async () => {
