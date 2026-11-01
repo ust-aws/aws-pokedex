@@ -15,7 +15,7 @@ const registerSchema = z.object({
 });
 const loginSchema = z.object({ email: emailSchema, password: z.string().min(1) });
 
-function isDuplicateUser(error: unknown): boolean {
+export function isDuplicateUser(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   if ('code' in error && error.code === '23505' && 'constraint' in error &&
       (error.constraint === 'users_email_unique' || error.constraint === 'users_username_unique')) {
