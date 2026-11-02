@@ -2,17 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { useAuth } from "@/components/auth-provider";
 
-type AuthProps = {
-  user: string | null;
-  onSignIn: (name: string) => void;
-  onSignOut: () => void;
-};
-
-function AuthMenu({ user, onSignIn, onSignOut }: AuthProps) {
+function AuthMenu() {
+  const { status, user, login, logout } = useAuth();
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  const displayName = user?.username ?? null;
 
   useEffect(() => {
     if (!open) return;
@@ -24,12 +25,23 @@ function AuthMenu({ user, onSignIn, onSignOut }: AuthProps) {
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
-    onSignIn(name.trim());
-    setName("");
-    setOpen(false);
+    const mail = email.trim();
+    if (!mail || !password || loading) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      await login({ email: mail, password });
+      setEmail("");
+      setPassword("");
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign in failed");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -41,9 +53,9 @@ function AuthMenu({ user, onSignIn, onSignOut }: AuthProps) {
         aria-expanded={open}
         className="flex items-center gap-2 rounded-full p-1 text-white transition hover:bg-yellow-300"
       >
-        {user && (
+        {displayName && (
           <span className="hidden max-w-28 truncate text-xs font-black tracking-widest sm:block">
-            {user}
+            {displayName}
           </span>
         )}
         <svg
@@ -58,19 +70,23 @@ function AuthMenu({ user, onSignIn, onSignOut }: AuthProps) {
 
       {open && (
         <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-2xl bg-white p-4 text-gray-800 shadow-xl ring-1 ring-gray-200">
-          {user ? (
+          {status === "loading" ? (
+            <p className="text-xs font-bold tracking-wider text-gray-500">
+              LOADING...
+            </p>
+          ) : status === "authenticated" && displayName ? (
             <>
               <p className="text-xs font-bold tracking-wider text-gray-500">
                 SIGNED IN AS
               </p>
               <p className="mt-1 truncate text-lg font-black tracking-widest">
-                {user}
+                {displayName}
               </p>
 
               <button
                 type="button"
                 onClick={() => {
-                  onSignOut();
+                  logout();
                   setOpen(false);
                 }}
                 className="mt-4 w-full rounded-full bg-gray-200 py-2 text-xs font-bold tracking-widest hover:bg-gray-300"
@@ -81,21 +97,38 @@ function AuthMenu({ user, onSignIn, onSignOut }: AuthProps) {
           ) : (
             <form onSubmit={submit}>
               <p className="text-xs font-bold tracking-wider text-gray-500">
-                ADMIN SIGN IN
+                SIGN IN
               </p>
               <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Username"
-                aria-label="Username"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email"
+                aria-label="Email"
+                autoComplete="email"
                 autoFocus
                 className="mt-2 w-full rounded-xl border-2 border-gray-200 px-3 py-2 text-sm outline-none focus:border-yellow-400"
               />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                aria-label="Password"
+                autoComplete="current-password"
+                className="mt-2 w-full rounded-xl border-2 border-gray-200 px-3 py-2 text-sm outline-none focus:border-yellow-400"
+              />
+              {error && (
+                <p role="alert" className="mt-2 text-xs font-bold text-red-500">
+                  {error}
+                </p>
+              )}
               <button
                 type="submit"
-                className="mt-3 w-full rounded-full bg-red-500 py-2 text-xs font-bold tracking-widest text-white hover:bg-red-600"
+                disabled={loading}
+                className="mt-3 w-full rounded-full bg-red-500 py-2 text-xs font-bold tracking-widest text-white hover:bg-red-600 disabled:opacity-60"
               >
-                SIGN IN
+                {loading ? "SIGNING IN..." : "SIGN IN"}
               </button>
             </form>
           )}
@@ -106,18 +139,10 @@ function AuthMenu({ user, onSignIn, onSignOut }: AuthProps) {
 }
 
 type Props = {
-  user: string | null;
   onMenuClick: () => void;
-  onSignIn: (name: string) => void;
-  onSignOut: () => void;
 };
 
-export default function Header({
-  user,
-  onMenuClick,
-  onSignIn,
-  onSignOut,
-}: Props) {
+export default function Header({ onMenuClick }: Props) {
   return (
     <header className="relative flex h-16 items-center justify-between bg-yellow-400 px-4 sm:h-20 sm:px-8">
       <button
@@ -142,7 +167,7 @@ export default function Header({
         />
       </div>
 
-      <AuthMenu user={user} onSignIn={onSignIn} onSignOut={onSignOut} />
+      <AuthMenu />
     </header>
   );
 }
