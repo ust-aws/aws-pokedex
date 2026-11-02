@@ -13,23 +13,6 @@ import {
   type Pokemon,
   type PokemonInput,
 } from "@/lib/types";
-import { AuthBoundary } from "@/components/auth-boundary";
-import { NavBar } from "@/components/nav-bar";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-export default function HomePage() {
-  return (
-    <AuthBoundary>
-      <NavBar />
-      <main className="mx-auto w-full max-w-6xl px-6 py-10">
-        <Card>
-          <CardHeader><CardTitle className="text-2xl">Your Pokédex</CardTitle></CardHeader>
-          <CardContent><p className="text-muted-foreground">Pokémon browsing and management will be available here.</p></CardContent>
-        </Card>
-      </main>
-    </AuthBoundary>
-  );
-}
 
 const ROWS_PER_PAGE = 10;
 const MAX_PAGE_BUTTONS = 20;
@@ -74,7 +57,7 @@ function useColumns() {
 
 type ModalState = { open: false } | { open: true; editing: Pokemon | null };
 
-export default function Home() {
+export default function HomePage() {
   const [pokemon, setPokemon] = useLocalStorage<Pokemon[]>(
     "pokedex:v3:pokemon",
     INITIAL_POKEMON,
