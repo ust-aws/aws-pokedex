@@ -31,25 +31,28 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
-  return (
-    <html
-      lang="en"
-      className={cn("h-full", "antialiased", geistSans.variable, geistMono.variable, "font-sans", inter.variable)}
-    >
-      <body className="min-h-screen flex flex-col"><AuthProvider>{children}</AuthProvider></body>
-    </html>
-  );
-}
-
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className={`${oswald.variable} font-display antialiased`}>
-        {children}
+    <html
+      lang="en"
+      className={cn(
+        "h-full",
+        "antialiased",
+        geistSans.variable,
+        geistMono.variable,
+        inter.variable,
+        oswald.variable,
+        "font-sans"
+      )}
+    >
+      <body className="min-h-screen flex flex-col font-display">
+        <AuthProvider>{children}</AuthProvider>
       </body>
+    </html>
+  );
+}
     </html>
   );
 }
