@@ -1,4 +1,5 @@
 import type { Pokemon } from "@/lib/types";
+import { pokemonImageUrl } from "@/lib/pokemon";
 import PokemonImage from "./PokemonImage";
 
 type Props = {
@@ -26,7 +27,7 @@ export default function PokemonCard({
       >
         <div className="flex h-36 w-36 items-center justify-center sm:h-40 sm:w-40">
           <PokemonImage
-            src={pokemon.image}
+            src={pokemonImageUrl(pokemon.imageKey)}
             alt={pokemon.name}
             className="h-full w-full"
           />
@@ -44,9 +45,6 @@ export default function PokemonCard({
               {t}
             </span>
           ))}
-          <span className="rounded-full bg-gray-200 px-2.5 py-1 text-gray-600">
-            {pokemon.classification}
-          </span>
         </div>
 
         {pokemon.description && (
@@ -57,7 +55,7 @@ export default function PokemonCard({
 
         {isLoggedIn && (
           <p className="mt-3 text-[10px] font-bold uppercase tracking-wider text-gray-400">
-            By {pokemon.ownerId}
+            By {pokemon.creatorUsername ?? "Unknown trainer"}
             {!canEdit && " · view only"}
           </p>
         )}

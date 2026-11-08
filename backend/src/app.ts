@@ -6,6 +6,7 @@ import { HttpError } from './errors.ts';
 import { authRouter } from './routes/auth.ts';
 import { uploadsRouter } from './routes/uploads.ts';
 import { adminRouter } from "./routes/admin.ts";
+import { pokemonRouter } from './routes/pokemon.ts';
 
 export const app = express();
 
@@ -13,6 +14,7 @@ app.use(cors({ origin: process.env.CORS_ORIGIN ?? false }));
 app.use(express.json());
 app.use('/uploads', uploadsRouter);
 app.use('/auth', authRouter);
+app.use('/pokemon', pokemonRouter);
 
 app.use(adminRouter);
 

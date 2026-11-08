@@ -30,12 +30,11 @@ export type Pokemon = {
   id: string;
   name: string;
   types: string[];
-  classification: string;
-  description: string;
-  image: string;
-  ownerId: string;
+  description: string | null;
+  imageKey: string | null;
+  createdBy: string;
+  creatorUsername?: string;
 };
 
-export type FilterMode = "ALL" | "TYPES" | "CLASSIFICATION";
-export type PokemonInput = Omit<Pokemon, "id" | "ownerId">;
-export const normalizeUser = (name: string) => name.trim().toLowerCase();
+export type FilterMode = "ALL" | "TYPES";
+export type PokemonInput = Pick<Pokemon, "name" | "types" | "description" | "imageKey">;

@@ -1,9 +1,6 @@
-import type { FilterMode } from "@/lib/types";
-
-export type Facet = { label: string; count: number };
+export type Facet = { label: string; count?: number };
 
 type Props = {
-  mode: FilterMode;
   facets: Facet[];
   selected: string | null;
   open: boolean;
@@ -12,14 +9,13 @@ type Props = {
 };
 
 export default function Sidebar({
-  mode,
   facets,
   selected,
   open,
   onSelect,
   onClose,
 }: Props) {
-  const title = mode === "CLASSIFICATION" ? "CLASSIFICATION" : "POKEMON TYPE";
+  const title = "POKEMON TYPE";
 
   return (
     <>

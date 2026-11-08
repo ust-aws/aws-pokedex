@@ -1,6 +1,7 @@
+import { SearchBar } from "@/components/search-bar";
 import type { FilterMode } from "@/lib/types";
 
-const MODES: FilterMode[] = ["ALL", "TYPES", "CLASSIFICATION"];
+const MODES: FilterMode[] = ["ALL", "TYPES"];
 
 type Props = {
   mode: FilterMode;
@@ -47,24 +48,7 @@ export default function FilterBar({
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
-          <svg
-            viewBox="0 0 24 24"
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="m20 20-3.5-3.5" strokeLinecap="round" />
-          </svg>
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Search Pokémon by name…"
-            aria-label="Search Pokémon by name"
-            className="w-full rounded-full border-2 border-gray-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition focus:border-yellow-400"
-          />
+          <SearchBar value={query} onSearch={onQueryChange} placeholder="Search Pokémon by name…" />
         </div>
 
         {canAdd && (

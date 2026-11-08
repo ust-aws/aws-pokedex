@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import type { Pokemon, PokemonInput } from "@/lib/types";
+import { pokemonImageUrl, uploadPokemonImage } from "@/lib/pokemon";
 import PokemonImage from "./PokemonImage";
 
 type Props = {
   editing: Pokemon | null;
   readOnly: boolean;
   types: string[];
-  classifications: string[];
-  onSave: (data: PokemonInput) => void;
+  onSave: (data: PokemonInput) => Promise<void>;
   onClose: () => void;
 };
 
@@ -20,7 +20,6 @@ export default function PokemonModal({
   editing,
   readOnly,
   types,
-  classifications,
   onSave,
   onClose,
 }: Props) {
@@ -28,18 +27,18 @@ export default function PokemonModal({
   const [selectedTypes, setSelectedTypes] = useState<string[]>(
     editing?.types ?? [],
   );
-  const [classification, setClassification] = useState(
-    editing?.classification ?? "",
-  );
   const [description, setDescription] = useState(editing?.description ?? "");
-  const [image, setImage] = useState(editing?.image ?? "");
+  const [image, setImage] = useState(pokemonImageUrl(editing?.imageKey ?? null));
+  const [imageKey, setImageKey] = useState(editing?.imageKey ?? null);
+  const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !saving && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, saving]);
 
   function toggleType(t: string) {
     setSelectedTypes((cur) =>
@@ -49,10 +48,11 @@ export default function PokemonModal({
 
   function handleFile(file: File | undefined) {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file.");
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      setError("Select a PNG, JPEG, or WebP image of 2 MB or smaller.");
       return;
     }
+    setFile(file);
     const reader = new FileReader();
     reader.onload = () => {
       setError("");
@@ -61,27 +61,31 @@ export default function PokemonModal({
     reader.readAsDataURL(file);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (readOnly) return;
+    if (readOnly || saving) return;
     if (!name.trim()) {
       setError("Name is required.");
       return;
     }
-    if (selectedTypes.length === 0) {
-      setError("Pick at least one type.");
+    if (selectedTypes.length < 1 || selectedTypes.length > 2) {
+      setError("Select one or two types.");
       return;
     }
-    onSave({
-      name: name.trim(),
-      types: selectedTypes,
-      classification: classification.trim() || "Unknown Pokémon",
-      description: description.trim(),
-      image: image.trim(),
-    });
+    setSaving(true);
+    setError("");
+    try {
+      const key = file ? await uploadPokemonImage(file) : imageKey;
+      setImageKey(key);
+      setFile(null);
+      await onSave({ name: name.trim(), types: selectedTypes, description: description.trim(), imageKey: key });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Cannot save Pokémon.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const isDataUrl = image.startsWith("data:");
   const title = readOnly
     ? "POKÉMON DETAILS"
     : editing
@@ -91,7 +95,7 @@ export default function PokemonModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
+      onClick={() => { if (!saving) onClose(); }}
     >
       <form
         onSubmit={handleSubmit}
@@ -106,7 +110,7 @@ export default function PokemonModal({
         </h2>
         {editing && (
           <p className="mb-3 text-xs text-gray-500">
-            Created by <b>{editing.ownerId}</b>. Only they can edit this card.
+            Created by <b>{editing.creatorUsername ?? "Unknown trainer"}</b>. The creator and admins can edit this card.
           </p>
         )}
 
@@ -114,7 +118,7 @@ export default function PokemonModal({
           <PokemonImage src={image} alt="Preview" className="h-28 w-28" />
         </div>
 
-        <fieldset disabled={readOnly} className="space-y-3">
+        <fieldset disabled={readOnly || saving} className="space-y-3">
           <label className="block text-xs font-bold tracking-wider text-gray-600">
             NAME
             <input
@@ -131,7 +135,7 @@ export default function PokemonModal({
               TYPES{" "}
               {!readOnly && (
                 <span className="font-normal text-gray-400">
-                  (pick one or more)
+                  (select one or two)
                 </span>
               )}
             </p>
@@ -144,6 +148,7 @@ export default function PokemonModal({
                     type="button"
                     onClick={() => toggleType(t)}
                     aria-pressed={on}
+                    disabled={!on && selectedTypes.length >= 2}
                     className={`rounded-full px-3 py-1 text-[11px] font-bold tracking-wider transition disabled:cursor-default ${
                       on
                         ? "bg-red-500 text-white"
@@ -156,22 +161,6 @@ export default function PokemonModal({
               })}
             </div>
           </div>
-
-          <label className="block text-xs font-bold tracking-wider text-gray-600">
-            CLASSIFICATION
-            <input
-              value={classification}
-              onChange={(e) => setClassification(e.target.value)}
-              list="classification-options"
-              className={`${inputClass} mt-1`}
-              placeholder="Classification"
-            />
-            <datalist id="classification-options">
-              {classifications.map((c) => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
-          </label>
 
           <label className="block text-xs font-bold tracking-wider text-gray-600">
             DESCRIPTION
@@ -195,20 +184,10 @@ export default function PokemonModal({
           {!readOnly && (
             <>
               <label className="block text-xs font-bold tracking-wider text-gray-600">
-                IMAGE URL
-                <input
-                  value={isDataUrl ? "" : image}
-                  onChange={(e) => setImage(e.target.value)}
-                  className={`${inputClass} mt-1`}
-                  placeholder={isDataUrl ? "Using uploaded file" : "https://…"}
-                />
-              </label>
-
-              <label className="block text-xs font-bold tracking-wider text-gray-600">
-                …OR UPLOAD A FILE
+                UPLOAD AN IMAGE
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/png,image/jpeg,image/webp"
                   onChange={(e) => handleFile(e.target.files?.[0])}
                   className="mt-1 block w-full text-sm file:mr-3 file:rounded-full file:border-0 file:bg-yellow-400 file:px-4 file:py-2 file:text-xs file:font-bold file:text-white hover:file:bg-yellow-500"
                 />
@@ -226,7 +205,7 @@ export default function PokemonModal({
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => { if (!saving) onClose(); }}
             className="rounded-full bg-gray-200 px-5 py-2 text-xs font-bold tracking-widest text-gray-700 hover:bg-gray-300"
           >
             {readOnly ? "CLOSE" : "CANCEL"}
@@ -234,9 +213,10 @@ export default function PokemonModal({
           {!readOnly && (
             <button
               type="submit"
+              disabled={saving}
               className="rounded-full bg-red-500 px-5 py-2 text-xs font-bold tracking-widest text-white hover:bg-red-600"
             >
-              {editing ? "SAVE" : "ADD"}
+              {saving ? "SAVING…" : editing ? "SAVE" : "ADD"}
             </button>
           )}
         </div>

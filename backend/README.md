@@ -62,6 +62,21 @@ Authentication reads the active user from PostgreSQL on every request.
 Role changes and account deletion take effect on the next request.
 Deleted accounts cannot log in. Their email and username can be registered again.
 
+## Pokémon API
+
+All Pokémon routes require `Authorization: Bearer <token>`.
+`GET /pokemon?q=&type=&page=` returns `{items, total, page, pageSize}` with 20 records per page.
+The name query supports partial matches without case sensitivity. The type filter accepts one type from `POKEMON_TYPES`.
+`GET /pokemon/:id` returns a record. Both read endpoints include `creatorUsername`.
+
+`POST /pokemon` accepts `{name, types, description?, imageKey?}`. The caller becomes the creator.
+Types must contain one or two distinct Pokémon types. Descriptions have a maximum length of 500 characters.
+Image keys must identify confirmed files under `images/`. The API checks that the object exists in S3.
+`PATCH /pokemon/:id` accepts a partial update. Description and image key can be null.
+`DELETE /pokemon/:id` marks the record as deleted and returns 204.
+Creators and admins can update or delete records. Other users receive 403 for these requests.
+Missing or deleted records return 404.
+
 ## Image uploads
 
 `POST /uploads/presign` requires `Authorization: Bearer <token>` and accepts `{contentType}`.

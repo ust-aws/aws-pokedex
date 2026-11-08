@@ -1,308 +1,142 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
-import Sidebar, { type Facet } from "@/components/Sidebar";
+import Sidebar from "@/components/Sidebar";
 import FilterBar from "@/components/FilterBar";
 import PokemonCard from "@/components/PokemonCard";
 import PokemonModal from "@/components/PokemonModal";
-import { INITIAL_POKEMON, POKEMON_TYPES } from "@/lib/data";
-import {
-  normalizeUser,
-  type FilterMode,
-  type Pokemon,
-  type PokemonInput,
-} from "@/lib/types";
-
-const ROWS_PER_PAGE = 10;
-const MAX_PAGE_BUTTONS = 20;
-
-function useLocalStorage<T>(key: string, initial: T) {
-  const [value, setValue] = useState<T>(initial);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(key);
-      if (raw !== null) setValue(JSON.parse(raw) as T);
-    } catch {}
-    setReady(true);
-  }, [key]);
-
-  useEffect(() => {
-    if (!ready) return;
-    try {
-      window.localStorage.setItem(key, JSON.stringify(value));
-    } catch {}
-  }, [key, value, ready]);
-
-  return [value, setValue] as const;
-}
-
-function useColumns() {
-  const [columns, setColumns] = useState(3);
-
-  useEffect(() => {
-    const update = () => {
-      const w = window.innerWidth;
-      setColumns(w >= 1024 ? 3 : w >= 640 ? 2 : 1);
-    };
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
-  return columns;
-}
+import { Pagination } from "@/components/pagination";
+import { AuthBoundary } from "@/components/auth-boundary";
+import { useAuth } from "@/components/auth-provider";
+import { api } from "@/lib/api";
+import { POKEMON_TYPES } from "@/lib/data";
+import type { PaginatedResponse, Pokemon, PokemonInput } from "@/lib/types";
 
 type ModalState = { open: false } | { open: true; editing: Pokemon | null };
 
-export default function HomePage() {
-  const [pokemon, setPokemon] = useLocalStorage<Pokemon[]>(
-    "pokedex:v3:pokemon",
-    INITIAL_POKEMON,
-  );
-
-  const [user, setUser] = useLocalStorage<string | null>(
-    "pokedex:v2:user",
-    null,
-  );
-  const [mode, setMode] = useState<FilterMode>("ALL");
-  const [selected, setSelected] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+function PokemonPage() {
+  const { user } = useAuth();
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const query = params.get("q") ?? "";
+  const selected = params.get("type") ?? "";
+  const rawPage = Number(params.get("page") ?? 1);
+  const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+  const request = new URLSearchParams({ q: query, type: selected, page: String(page) }).toString();
+  const [result, setResult] = useState<{ request: string; data: PaginatedResponse<Pokemon> } | null>(null);
+  const [failure, setFailure] = useState<{ request: string; message: string } | null>(null);
+  const [revision, setRevision] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [modal, setModal] = useState<ModalState>({ open: false });
-  const [page, setPage] = useState(1);
+  const [actionError, setActionError] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
-  const userId = user ? normalizeUser(user) : null;
-  const ownsCard = (p: Pokemon) => userId !== null && p.ownerId === userId;
-
-  const allTypes = useMemo(() => {
-    const extra = pokemon
-      .flatMap((p) => p.types)
-      .filter((t) => !POKEMON_TYPES.includes(t));
-    return [...POKEMON_TYPES, ...Array.from(new Set(extra))];
-  }, [pokemon]);
-
-  const classifications = useMemo(
-    () => Array.from(new Set(pokemon.map((p) => p.classification))).sort(),
-    [pokemon],
-  );
-
-  const facets: Facet[] = useMemo(() => {
-    if (mode === "CLASSIFICATION") {
-      return classifications.map((label) => ({
-        label,
-        count: pokemon.filter((p) => p.classification === label).length,
-      }));
+  function updateParams(values: Record<string, string>) {
+    const next = new URLSearchParams(params.toString());
+    for (const [key, value] of Object.entries(values)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
     }
-    return allTypes.map((label) => ({
-      label,
-      count: pokemon.filter((p) => p.types.includes(label)).length,
-    }));
-  }, [mode, allTypes, classifications, pokemon]);
+    router.push(`${pathname}?${next.toString()}`, { scroll: false });
+  }
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return pokemon.filter((p) => {
-      if (q && !p.name.toLowerCase().includes(q)) return false;
-      if (selected) {
-        if (mode === "CLASSIFICATION") return p.classification === selected;
-        return p.types.includes(selected);
-      }
-      return true;
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    api<PaginatedResponse<Pokemon>>(`/pokemon?${request}`, { signal: controller.signal })
+      .then((data) => {
+        if (active) {
+          setResult({ request, data });
+          setFailure(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) setFailure({ request, message: error instanceof Error ? error.message : "Cannot load Pokémon." });
+      });
+    return () => { active = false; controller.abort(); };
+  }, [request, revision]);
+
+  const data = result?.request === request ? result.data : null;
+  const error = failure?.request === request ? failure.message : null;
+  const canEdit = (pokemon: Pokemon) => user !== null && (pokemon.createdBy === user.id || user.role === "admin");
+
+  function refresh() {
+    setResult(null);
+    setFailure(null);
+    setRevision((value) => value + 1);
+  }
+
+  async function savePokemon(input: PokemonInput) {
+    if (!user) throw new Error("Sign in to save Pokémon.");
+    const editing = modal.open ? modal.editing : null;
+    await api<Pokemon>(editing ? `/pokemon/${editing.id}` : "/pokemon", {
+      method: editing ? "PATCH" : "POST",
+      body: editing || input.imageKey !== null ? input : { ...input, imageKey: undefined },
     });
-  }, [pokemon, query, mode, selected]);
-
-  const columns = useColumns();
-  const pageSize = ROWS_PER_PAGE * columns;
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const startIndex = (currentPage - 1) * pageSize;
-  const paged = filtered.slice(startIndex, startIndex + pageSize);
-
-  const firstButton = Math.min(
-    Math.max(1, currentPage - Math.floor(MAX_PAGE_BUTTONS / 2)),
-    Math.max(1, totalPages - MAX_PAGE_BUTTONS + 1),
-  );
-  const lastButton = Math.min(totalPages, firstButton + MAX_PAGE_BUTTONS - 1);
-  const pageNumbers = Array.from(
-    { length: lastButton - firstButton + 1 },
-    (_, i) => firstButton + i,
-  );
-
-  function goToPage(n: number) {
-    setPage(Math.min(Math.max(1, n), totalPages));
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function changeMode(next: FilterMode) {
-    setMode(next);
-    setSelected(null);
-    setPage(1);
-  }
-
-  function selectFacet(label: string | null) {
-    if (mode === "ALL" && label) setMode("TYPES");
-    setSelected(label);
-    setPage(1);
-  }
-
-  function savePokemon(data: PokemonInput) {
-    if (!userId) return;
-    if (modal.open && modal.editing) {
-      const id = modal.editing.id;
-      setPokemon((list) =>
-        list.map((p) =>
-          p.id === id && p.ownerId === userId ? { ...p, ...data } : p,
-        ),
-      );
-    } else {
-      setPokemon((list) => [
-        { id: crypto.randomUUID(), ownerId: userId, ...data },
-        ...list,
-      ]);
-      setPage(1);
-    }
     setModal({ open: false });
+    refresh();
   }
 
-  function deletePokemon(p: Pokemon) {
-    if (!ownsCard(p)) return;
-    if (window.confirm(`Delete ${p.name}?`)) {
-      setPokemon((list) => list.filter((x) => x.id !== p.id));
+  async function deletePokemon(pokemon: Pokemon) {
+    if (!canEdit(pokemon) || deleting || !window.confirm(`Delete ${pokemon.name}?`)) return;
+    setDeleting(true);
+    setActionError("");
+    try {
+      await api<void>(`/pokemon/${pokemon.id}`, { method: "DELETE" });
+      if (data?.items.length === 1 && page > 1) updateParams({ page: String(page - 1) });
+      refresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Cannot delete Pokémon.");
+    } finally {
+      setDeleting(false);
     }
   }
 
   return (
     <div className="min-h-screen bg-white">
-      <Header
-        user={user}
-        onMenuClick={() => setSidebarOpen((o) => !o)}
-        onSignIn={setUser}
-        onSignOut={() => {
-          setUser(null);
-          setModal({ open: false });
-        }}
-      />
-
+      <Header onMenuClick={() => setSidebarOpen((open) => !open)} />
       <div className="mt-2 flex">
-        <Sidebar
-          mode={mode}
-          facets={facets}
-          selected={selected}
-          open={sidebarOpen}
-          onSelect={selectFacet}
-          onClose={() => setSidebarOpen(false)}
-        />
-
+        <Sidebar facets={POKEMON_TYPES.map((label) => ({ label }))} selected={selected || null}
+          open={sidebarOpen} onSelect={(type) => updateParams({ type: type ?? "", page: "1" })}
+          onClose={() => setSidebarOpen(false)} />
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-8">
-          <FilterBar
-            mode={mode}
-            query={query}
-            canAdd={userId !== null}
-            onModeChange={changeMode}
-            onQueryChange={(q) => {
-              setQuery(q);
-              setPage(1);
+          <FilterBar mode={selected ? "TYPES" : "ALL"} query={query} canAdd={user !== null}
+            onModeChange={(mode) => {
+              if (mode === "TYPES") setSidebarOpen(true);
+              else updateParams({ type: "", page: "1" });
             }}
-            onAdd={() => setModal({ open: true, editing: null })}
-          />
-
-          {filtered.length === 0 ? (
-            <div className="mt-16 text-center text-gray-500">
-              <p className="text-lg font-bold tracking-widest">
-                NO POKÉMON FOUND
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery("");
-                  setSelected(null);
-                  setPage(1);
-                }}
-                className="mt-4 rounded-full bg-gray-200 px-5 py-2 text-xs font-bold tracking-widest hover:bg-gray-300"
-              >
-                CLEAR FILTERS
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {paged.map((p) => (
-                  <PokemonCard
-                    key={p.id}
-                    pokemon={p}
-                    canEdit={ownsCard(p)}
-                    isLoggedIn={userId !== null}
-                    onOpen={(x) => setModal({ open: true, editing: x })}
-                    onDelete={deletePokemon}
-                  />
-                ))}
+            onQueryChange={(q) => updateParams({ q, page: "1" })}
+            onAdd={() => setModal({ open: true, editing: null })} />
+          {actionError && <p role="alert" className="mt-4 text-red-600">{actionError}</p>}
+          {error ? <div className="mt-8"><p role="alert">{error}</p><button onClick={refresh}>Retry</button></div>
+            : !data ? <p role="status" className="mt-8">Loading Pokémon…</p>
+            : data.items.length === 0 ? <div className="mt-16 text-center text-gray-500">
+              <p>NO POKÉMON FOUND</p>
+              <button onClick={() => updateParams({ q: "", type: "", page: "1" })}>CLEAR FILTERS</button>
+            </div> : <>
+              <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3" aria-busy={deleting}>
+                {data.items.map((pokemon) => <PokemonCard key={pokemon.id} pokemon={pokemon}
+                  canEdit={canEdit(pokemon)} isLoggedIn={user !== null}
+                  onOpen={(editing) => setModal({ open: true, editing })} onDelete={deletePokemon} />)}
               </div>
-
-              <p className="mt-6 text-center text-xs text-gray-500">
-                Showing {startIndex + 1}–{startIndex + paged.length} of{" "}
-                {filtered.length}
+              <p className="my-6 text-center text-xs text-gray-500">
+                Showing {(data.page - 1) * data.pageSize + 1}–{(data.page - 1) * data.pageSize + data.items.length} of {data.total}
               </p>
-
-              {totalPages > 1 && (
-                <nav
-                  aria-label="Pagination"
-                  className="mt-3 flex flex-wrap items-center justify-center gap-2"
-                >
-                  <button
-                    type="button"
-                    onClick={() => goToPage(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className="rounded-full bg-gray-200 px-4 py-2 text-xs font-bold tracking-widest text-gray-700 hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    PREV
-                  </button>
-
-                  {pageNumbers.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => goToPage(n)}
-                      aria-current={n === currentPage ? "page" : undefined}
-                      className={`h-9 min-w-9 rounded-full px-3 text-xs font-bold transition ${
-                        n === currentPage
-                          ? "bg-yellow-600 text-white shadow"
-                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-
-                  <button
-                    type="button"
-                    onClick={() => goToPage(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className="rounded-full bg-gray-200 px-4 py-2 text-xs font-bold tracking-widest text-gray-700 hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    NEXT
-                  </button>
-                </nav>
-              )}
-            </>
-          )}
+            </>}
+          {data && <Pagination total={data.total} page={data.page} pageSize={data.pageSize}
+            onPageChange={(next) => updateParams({ page: String(next) })} />}
         </main>
       </div>
-
-      {modal.open && (
-        <PokemonModal
-          key={modal.editing?.id ?? "new"}
-          editing={modal.editing}
-          readOnly={modal.editing ? !ownsCard(modal.editing) : false}
-          types={allTypes}
-          classifications={classifications}
-          onSave={savePokemon}
-          onClose={() => setModal({ open: false })}
-        />
-      )}
+      {modal.open && <PokemonModal key={modal.editing?.id ?? "new"} editing={modal.editing}
+        readOnly={modal.editing ? !canEdit(modal.editing) : false} types={POKEMON_TYPES}
+        onSave={savePokemon} onClose={() => setModal({ open: false })} />}
     </div>
   );
+}
+
+export default function HomePage() {
+  return <AuthBoundary><Suspense fallback={<p role="status">Loading Pokémon…</p>}><PokemonPage /></Suspense></AuthBoundary>;
 }
