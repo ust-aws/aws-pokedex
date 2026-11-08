@@ -29,7 +29,7 @@ The API uses port 5000. Its `CORS_ORIGIN` must permit `http://localhost:3001`.
 | Variable | Purpose |
 | --- | --- |
 | `NEXT_PUBLIC_API_URL` | API origin, such as `http://localhost:5000`. Required for API requests. |
-| `NEXT_PUBLIC_IMAGES_BASE_URL` | Public S3 image origin for future Pokémon pages. |
+| `NEXT_PUBLIC_IMAGES_BASE_URL` | Public S3 image origin for confirmed Pokémon images. |
 
 Next.js includes these public values in the browser bundle at build time.
 After an environment change, restart the development server or rebuild the export.
@@ -53,7 +53,26 @@ Logout clears the session across browser tabs.
 
 `/` requires authentication. `/admin` requires the current admin role.
 The guards control navigation. The backend enforces access permissions.
-These routes contain initial page shells. Pokémon features and user management belong to separate issues.
+The home page loads Pokémon from the backend. It does not use demo records or local storage for Pokémon.
+
+## Pokémon
+
+The URL stores the name query (`q`), type filter (`type`), and page number (`page`).
+Search waits 300 ms after input. A search or type change resets the page to 1.
+The backend returns 20 records per page. Browser Back and Forward restore the filters.
+The page shows request errors and offers Retry.
+
+Users can create Pokémon. Creators and admins can edit or delete Pokémon.
+Other users can read the records. The backend enforces these permissions.
+Pokémon contain a name, one or two types, an optional description, and an optional image.
+The backend does not support classification or external image URLs.
+
+Image uploads use `/uploads/presign`, a direct S3 POST, and `/uploads/confirm`.
+The Pokémon record stores the confirmed `imageKey`. Images use `NEXT_PUBLIC_IMAGES_BASE_URL`.
+Accepted formats are PNG, JPEG, and WebP. The maximum file size is 2 MB.
+Configure the S3 bucket as described in `backend/README.md`.
+
+This branch includes the Pokémon routes and integration tests from `feature/pokemon-api`.
 
 ## Shared components
 

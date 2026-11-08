@@ -65,17 +65,20 @@ Deleted accounts cannot log in. Their email and username can be registered again
 ## Pokémon API
 
 All Pokémon routes require `Authorization: Bearer <token>`.
-`GET /pokemon?q=&type=&page=` lists active Pokémon with case-insensitive partial name search and an optional type filter.
-The page defaults to 1; results contain `{items, total, page, pageSize}` with 20 items per page.
-The type must be one of the types in `POKEMON_TYPES`. An empty `q` or `type` applies no filter.
-Results are ordered by creation time and ID, and include `creatorUsername`.
-`GET /pokemon/:id` returns an active Pokémon with `creatorUsername`.
+`GET /pokemon?q=&type=&page=` returns `{items, total, page, pageSize}` with 20 records per page.
+The page defaults to 1. Results use creation time and ID as the sort order.
+An empty name query or type filter applies no filter.
+The name query supports partial matches without case sensitivity. The type filter accepts one type from `POKEMON_TYPES`.
+`GET /pokemon/:id` returns a record. Both read endpoints include `creatorUsername`.
 
-`POST /pokemon` accepts `{name, types, description?, imageKey?}` and assigns the caller as creator.
-Names must be nonempty, types must contain one or two valid types, and descriptions are limited to 500 characters.
-`PATCH /pokemon/:id` accepts those fields as a partial update and requires at least one field.
-Only the owner or an admin may update or delete a Pokémon. `DELETE /pokemon/:id` soft-deletes it and returns 204.
-Missing or deleted Pokémon return 404; a non-owner who is not an admin receives 403 when attempting a change.
+`POST /pokemon` accepts `{name, types, description?, imageKey?}`. The caller becomes the creator.
+Names must contain at least one character after whitespace removal.
+Types must contain one or two distinct Pokémon types. Descriptions have a maximum length of 500 characters.
+Image keys must identify confirmed files under `images/`. The API checks that the object exists in S3.
+`PATCH /pokemon/:id` accepts a partial update with at least one field. Description and image key can be null.
+`DELETE /pokemon/:id` marks the record as deleted and returns 204.
+Creators and admins can update or delete records. Other users receive 403 for these requests.
+Missing or deleted records return 404.
 
 ## Image uploads
 

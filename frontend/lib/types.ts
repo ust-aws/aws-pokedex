@@ -25,3 +25,16 @@ export interface PaginatedResponse<T> {
   page: number;
   pageSize: number;
 }
+
+export type Pokemon = {
+  id: string;
+  name: string;
+  types: string[];
+  description: string | null;
+  imageKey: string | null;
+  createdBy: string;
+  creatorUsername?: string;
+};
+
+export type FilterMode = "ALL" | "TYPES";
+export type PokemonInput = Pick<Pokemon, "name" | "types" | "description" | "imageKey">;

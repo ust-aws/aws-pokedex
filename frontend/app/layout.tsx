@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { AuthProvider } from "@/components/auth-provider";
+import { Oswald } from "next/font/google";
 
 const inter = Inter({subsets:['latin'],variable:'--font-sans'});
 
@@ -16,18 +17,39 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const oswald = Oswald({
+  subsets: ["latin"],
+  variable: "--font-oswald",
+  weight: ["400", "500", "700"],
+});
+
 export const metadata: Metadata = {
   title: "AWS Pokédex",
   description: "Your shared Pokémon collection.",
+  icons: {
+    icon: "app/pokeball.png",
+  },
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html
       lang="en"
-      className={cn("h-full", "antialiased", geistSans.variable, geistMono.variable, "font-sans", inter.variable)}
+      className={cn(
+        "h-full",
+        "antialiased",
+        geistSans.variable,
+        geistMono.variable,
+        inter.variable,
+        oswald.variable,
+        "font-sans"
+      )}
     >
-      <body className="min-h-screen flex flex-col"><AuthProvider>{children}</AuthProvider></body>
+      <body className="min-h-screen flex flex-col font-display">
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }
